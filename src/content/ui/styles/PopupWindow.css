@@ -1,0 +1,231 @@
+/**
+ * PopupWindow.css
+ * 
+ * Styles for the popup window component
+ */
+
+.rs-popup {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 80%;
+  max-width: 800px;
+  max-height: 80vh;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.rs-popup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px;
+  background-color: #4285f4;
+  color: white;
+}
+
+.rs-popup-header h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.rs-popup-close {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background-color 0.3s ease;
+}
+
+.rs-popup-close:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.rs-popup-content {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.rs-popup-query {
+  margin-bottom: 15px;
+  font-size: 14px;
+  color: #666;
+}
+
+.rs-popup-paper-count {
+  margin-bottom: 15px;
+  font-weight: bold;
+}
+
+.rs-popup-batch-actions {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.rs-popup-batch-actions button {
+  padding: 8px 15px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: background-color 0.3s ease;
+}
+
+.rs-batch-summarize-btn {
+  background-color: #4285f4;
+  color: white;
+}
+
+.rs-batch-summarize-btn:hover {
+  background-color: #3367d6;
+}
+
+.rs-batch-download-btn {
+  background-color: #34a853;
+  color: white;
+}
+
+.rs-batch-download-btn:hover {
+  background-color: #2d8a46;
+}
+
+.rs-compare-btn {
+  background-color: #fbbc05;
+  color: white;
+}
+
+.rs-compare-btn:hover:not(:disabled) {
+  background-color: #e0a800;
+}
+
+.rs-compare-btn:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+.rs-popup-paper-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.rs-popup-paper-item {
+  display: flex;
+  align-items: center;
+  padding: 15px;
+  border: 1px solid #eee;
+  border-radius: 4px;
+  transition: background-color 0.3s ease;
+}
+
+.rs-popup-paper-item:hover {
+  background-color: #f9f9f9;
+}
+
+.rs-paper-checkbox {
+  margin-right: 15px;
+}
+
+.rs-popup-paper-info {
+  flex: 1;
+}
+
+.rs-popup-paper-title {
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+.rs-popup-paper-authors {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 3px;
+}
+
+.rs-popup-paper-year {
+  font-size: 12px;
+  color: #999;
+}
+
+.rs-popup-paper-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.rs-popup-paper-actions button {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background-color 0.3s ease;
+}
+
+.rs-summarize-btn {
+  background-color: #4285f4;
+  color: white;
+}
+
+.rs-summarize-btn:hover {
+  background-color: #3367d6;
+}
+
+.rs-download-btn {
+  background-color: #34a853;
+  color: white;
+}
+
+.rs-download-btn:hover:not(:disabled) {
+  background-color: #2d8a46;
+}
+
+.rs-download-btn:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+/* Loading and success states */
+.rs-loading {
+  position: relative;
+  color: transparent !important;
+}
+
+.rs-loading::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  margin-top: -8px;
+  margin-left: -8px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.rs-success {
+  background-color: #34a853 !important;
+} 

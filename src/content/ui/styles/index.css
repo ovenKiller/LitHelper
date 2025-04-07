@@ -1,0 +1,10 @@
+/**
+ * index.css
+ * 
+ * Main CSS file that imports all component styles
+ */
+
+@import './FloatingButton.css';
+@import './PopupWindow.css';
+@import './PaperControls.css';
+@import './SummaryContainer.css'; 

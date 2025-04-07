@@ -1,0 +1,59 @@
+{
+  "manifest_version": 3,
+  "name": "Research Paper Summarizer",
+  "version": "1.0.0",
+  "description": "Chrome extension to extract and summarize research papers from search results",
+  "icons": {
+    "16": "public/icons/icon16.png",
+    "48": "public/icons/icon48.png",
+    "128": "public/icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "public/popup.html",
+    "default_icon": {
+      "16": "public/icons/icon16.png",
+      "48": "public/icons/icon48.png",
+      "128": "public/icons/icon128.png"
+    }
+  },
+  "permissions": [
+    "storage",
+    "tabs",
+    "activeTab",
+    "scripting",
+    "downloads"
+  ],
+  "host_permissions": [
+    "*://scholar.google.com/*",
+    "*://scholar.google.co.uk/*",
+    "*://ieeexplore.ieee.org/*",
+    "*://dl.acm.org/*",
+    "*://arxiv.org/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://scholar.google.com/*",
+        "*://scholar.google.co.uk/*",
+        "*://ieeexplore.ieee.org/*",
+        "*://dl.acm.org/*",
+        "*://arxiv.org/*"
+      ],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["public/css/*", "public/images/*"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}

@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Research Paper Summarizer</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      padding: 0;
+      min-width: 320px;
+      max-width: 400px;
+      color: #333;
+    }
+    
+    header {
+      background-color: #4285f4;
+      color: white;
+      padding: 12px;
+      text-align: center;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    
+    h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 500;
+    }
+    
+    .container {
+      padding: 16px;
+    }
+    
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid #e0e0e0;
+      margin-bottom: 16px;
+    }
+    
+    .tab {
+      padding: 8px 16px;
+      cursor: pointer;
+      opacity: 0.7;
+      border-bottom: 2px solid transparent;
+      transition: opacity 0.2s;
+    }
+    
+    .tab.active {
+      opacity: 1;
+      border-bottom-color: #4285f4;
+      font-weight: 500;
+    }
+    
+    .tab-content {
+      display: none;
+    }
+    
+    .tab-content.active {
+      display: block;
+    }
+    
+    .btn {
+      background-color: #4285f4;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background-color 0.2s;
+    }
+    
+    .btn:hover {
+      background-color: #2b76e5;
+    }
+    
+    .form-group {
+      margin-bottom: 16px;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 4px;
+      font-weight: 500;
+      font-size: 14px;
+    }
+    
+    input, select, textarea {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 46px;
+      height: 24px;
+    }
+    
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #ccc;
+      transition: .3s;
+      border-radius: 24px;
+    }
+    
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .3s;
+      border-radius: 50%;
+    }
+    
+    input:checked + .slider {
+      background-color: #4285f4;
+    }
+    
+    input:checked + .slider:before {
+      transform: translateX(22px);
+    }
+    
+    .status {
+      font-size: 12px;
+      margin-top: 16px;
+      padding: 8px;
+      border-radius: 4px;
+      background-color: #f5f5f5;
+    }
+    
+    .status.success {
+      background-color: #d9f7dc;
+      color: #1e8e3e;
+    }
+    
+    .status.error {
+      background-color: #fce8e6;
+      color: #d93025;
+    }
+    
+    .setting-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      padding: 4px 0;
+    }
+    
+    .setting-row:hover {
+      background-color: #f5f5f5;
+    }
+    
+    .categories-list {
+      margin-top: 8px;
+    }
+    
+    .category-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 0;
+      border-bottom: 1px solid #eee;
+    }
+    
+    .category-name {
+      font-weight: 500;
+    }
+
+    .platform-select {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    
+    .platform-option {
+      flex: 1 1 calc(50% - 8px);
+      min-width: 120px;
+    }
+    
+    footer {
+      font-size: 12px;
+      color: #757575;
+      text-align: center;
+      padding: 8px 16px;
+      border-top: 1px solid #e0e0e0;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Research Paper Summarizer</h1>
+  </header>
+  
+  <div class="container">
+    <div class="tabs">
+      <div class="tab active" data-tab="home">Home</div>
+      <div class="tab" data-tab="settings">Settings</div>
+      <div class="tab" data-tab="history">History</div>
+      <div class="tab" data-tab="about">About</div>
+    </div>
+    
+    <div class="tab-content active" id="home">
+      <div class="status">
+        Currently viewing: <span id="current-page">-</span>
+      </div>
+      
+      <div id="detected-papers" style="margin-top: 16px;">
+        <div id="no-papers-message">No research papers detected on this page.</div>
+        <div id="papers-list" style="display: none;">
+          <div style="font-weight: 500; margin-bottom: 8px;">Detected papers: <span id="papers-count">0</span></div>
+          <button id="summarize-all-btn" class="btn">Summarize All Papers</button>
+          <div id="papers-container" style="margin-top: 16px;"></div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="tab-content" id="settings">
+      <div class="form-group">
+        <label for="api-key">LLM API Key</label>
+        <input type="password" id="api-key" placeholder="Enter your API key">
+      </div>
+      
+      <div class="form-group">
+        <label>LLM Provider</label>
+        <select id="llm-provider">
+          <option value="openai">OpenAI</option>
+          <option value="anthropic">Anthropic</option>
+          <option value="gemini">Google Gemini</option>
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label>Model</label>
+        <select id="llm-model">
+          <option value="gpt-4">GPT-4</option>
+          <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label>Summary Categories</label>
+        <div class="categories-list">
+          <div class="category-item">
+            <span class="category-name">Methodology</span>
+            <label class="switch">
+              <input type="checkbox" id="category-methodology" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div class="category-item">
+            <span class="category-name">Key Findings</span>
+            <label class="switch">
+              <input type="checkbox" id="category-findings" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div class="category-item">
+            <span class="category-name">Limitations</span>
+            <label class="switch">
+              <input type="checkbox" id="category-limitations" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div class="category-item">
+            <span class="category-name">Future Work</span>
+            <label class="switch">
+              <input type="checkbox" id="category-futureWork" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+      
+      <div class="form-group">
+        <label>Supported Platforms</label>
+        <div class="platform-select">
+          <div class="platform-option setting-row">
+            <span>Google Scholar</span>
+            <label class="switch">
+              <input type="checkbox" id="platform-googleScholar" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div class="platform-option setting-row">
+            <span>IEEE Xplore</span>
+            <label class="switch">
+              <input type="checkbox" id="platform-ieee" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div class="platform-option setting-row">
+            <span>ACM Digital Library</span>
+            <label class="switch">
+              <input type="checkbox" id="platform-acm" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div class="platform-option setting-row">
+            <span>ArXiv</span>
+            <label class="switch">
+              <input type="checkbox" id="platform-arxiv" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+      
+      <button id="save-settings-btn" class="btn">Save Settings</button>
+      <div id="settings-status" class="status" style="display: none;"></div>
+    </div>
+    
+    <div class="tab-content" id="history">
+      <div id="summaries-list">
+        <div id="no-summaries-message">No paper summaries yet.</div>
+        <div id="summaries-container" style="display: none;"></div>
+      </div>
+    </div>
+    
+    <div class="tab-content" id="about">
+      <h2 style="font-size: 16px;">Research Paper Summarizer</h2>
+      <p>
+        This tool helps researchers quickly understand and categorize academic papers 
+        from search results using AI.
+      </p>
+      <p>
+        Features:
+      </p>
+      <ul>
+        <li>Automatically summarize papers</li>
+        <li>Download PDFs for offline reading</li>
+        <li>Categorize papers by methodology, findings, etc.</li>
+        <li>Support for multiple academic search platforms</li>
+      </ul>
+      <p>
+        Version: 1.0.0
+      </p>
+    </div>
+  </div>
+  
+  <footer>
+    &copy; 2025 Research Paper Summarizer
+  </footer>
+  
+  <script src="popup.js"></script>
+</body>
+</html> 
