@@ -49,7 +49,9 @@
 │   └── config/                # 配置管理
 ├── manifest.json              # 扩展清单
 ├── package.json               # NPM包定义
-└── webpack.config.js          # Webpack配置
+├── webpack.config.js          # Webpack配置
+├── EXTENDING.md              # 扩展开发指南（英文）
+└── EXTENDING-zh.md           # 扩展开发指南（中文）
 ```
 
 ## 核心组件
@@ -104,7 +106,7 @@
 
 ## 开发指南
 
-```
+```bash
 # 安装依赖
 npm install
 
@@ -113,26 +115,30 @@ npm run dev
 
 # 生产环境构建
 npm run build
+
+# 运行代码检查
+npm run lint
+
+# 运行测试
+npm test
 ```
 
-## 使用指南
+## 依赖项
 
-1. 在Chrome浏览器中安装扩展
-2. 点击工具栏上的扩展图标，配置您的AI提供商API密钥
-3. 访问任何支持的学术搜索平台（如Google Scholar）
-4. 论文搜索结果将自动显示"摘要"和"下载PDF"按钮
-5. 点击"摘要"生成论文摘要
-6. 通过"历史"选项卡访问之前生成的摘要
+### 主要依赖
+- axios: ^1.4.0 - HTTP客户端，用于API请求
+- pdfjs-dist: ^3.8.162 - PDF处理库
 
-## 贡献指南
+### 开发依赖
+- webpack及相关插件用于构建
+- babel用于JavaScript转译
+- eslint用于代码检查
+- jest用于测试
 
-欢迎贡献！请遵循以下步骤：
+## 文档
 
-1. Fork项目
-2. 创建您的功能分支 (`git checkout -b feature/amazing-feature`)
-3. 提交您的更改 (`git commit -m 'Add some amazing feature'`)
-4. 推送到分支 (`git push origin feature/amazing-feature`)
-5. 开一个Pull Request
+- `EXTENDING.md` - 扩展开发指南（英文）
+- `EXTENDING-zh.md` - 扩展开发指南（中文）
 
 ## 许可证
 

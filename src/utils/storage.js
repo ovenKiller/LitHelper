@@ -5,9 +5,32 @@
  */
 
 /**
- * Storage utility class
+ * Extension storage utility class implemented as singleton
  */
-class Storage {
+class ExtensionStorage {
+  static instance = null;
+
+  /**
+   * Private constructor to enforce singleton pattern
+   */
+  constructor() {
+    if (ExtensionStorage.instance) {
+      throw new Error('ExtensionStorage is a singleton. Use ExtensionStorage.getInstance()');
+    }
+    ExtensionStorage.instance = this;
+  }
+
+  /**
+   * Get the singleton instance
+   * @returns {ExtensionStorage}
+   */
+  static getInstance() {
+    if (!ExtensionStorage.instance) {
+      ExtensionStorage.instance = new ExtensionStorage();
+    }
+    return ExtensionStorage.instance;
+  }
+
   /**
    * Set data in storage
    * @param {string} key - Storage key
@@ -15,6 +38,10 @@ class Storage {
    * @returns {Promise<void>}
    */
   set(key, value) {
+    if (typeof key !== 'string') {
+      return Promise.reject(new Error('Storage key must be a string'));
+    }
+
     return new Promise((resolve, reject) => {
       const data = { [key]: value };
       
@@ -34,6 +61,10 @@ class Storage {
    * @returns {Promise<any>} The retrieved data
    */
   get(key = null) {
+    if (key !== null && typeof key !== 'string') {
+      return Promise.reject(new Error('Storage key must be a string or null'));
+    }
+
     return new Promise((resolve, reject) => {
       if (key === null) {
         // Get all data
@@ -122,6 +153,10 @@ class Storage {
    * @returns {Function} Function to remove the listener
    */
   onChange(callback) {
+    if (typeof callback !== 'function') {
+      throw new Error('Callback must be a function');
+    }
+
     const listener = (changes, areaName) => {
       if (areaName === 'local') {
         callback(changes);
@@ -135,4 +170,5 @@ class Storage {
   }
 }
 
-export { Storage }; 
+// Export singleton instance
+export const storage = ExtensionStorage.getInstance(); 

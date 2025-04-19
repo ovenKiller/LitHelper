@@ -4,7 +4,7 @@
  * Configuration management for the extension
  */
 
-import { Storage } from '../utils/storage';
+import { storage } from '../utils/storage';
 
 // Default configuration
 const DEFAULT_CONFIG = {
@@ -49,7 +49,7 @@ const DEFAULT_CONFIG = {
  */
 class Config {
   constructor() {
-    this.storage = new Storage();
+    this.storage = storage;
     this.currentConfig = null;
   }
 

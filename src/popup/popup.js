@@ -5,13 +5,13 @@
  */
 
 import Config from '../config/config';
-import { Storage } from '../utils/storage';
+import { storage } from '../utils/storage';
 
 // Initialize popup controller
 class PopupController {
   constructor() {
     this.config = Config;
-    this.storage = new Storage();
+    this.storage = storage;
     this.tabs = document.querySelectorAll('.tab');
     this.tabContents = document.querySelectorAll('.tab-content');
     this.currentTab = 'home';

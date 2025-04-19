@@ -36,7 +36,7 @@
  */
 function createEmptyPaper() {
   return {
-    id: '',
+    id: '',//注意不同平台之间的数据，id应该保证唯一性
     title: '',
     authors: [],
     abstract: '',

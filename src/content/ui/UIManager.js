@@ -8,13 +8,15 @@ import FloatingButton from './components/FloatingButton';
 import PopupWindow from './components/PopupWindow';
 import PaperControls from './components/PaperControls';
 import SummaryContainer from './components/SummaryContainer';
-
+import { storage } from '../../utils/storage';
 class UIManager {
   constructor() {
     this.components = new Map();
     this.floatingButton = null;
     this.popupWindow = null;
     this.selectedPapers = new Set();
+    this.papers = null;  // Changed from Map() to new Map()
+    this.storage = storage;
   }
 
   /**
@@ -23,6 +25,20 @@ class UIManager {
    * @returns {Promise<void>}
    */
   async initialize(platform) {
+    // Initialize popup window first
+    this.popupWindow = new PopupWindow();
+    await this.popupWindow.initialize({
+      title: 'Research Summarizer',
+      query: this.getCurrentQuery(),
+      onClose: () => this.hidePopup(),
+      onSummarizeAll: () => this.handleSummarizeAll(platform),
+      onDownloadAll: () => this.handleDownloadAll(platform),
+      onCompare: () => this.handleCompare(platform)
+    });
+
+    // 给平台（例如Google Scholar）添加一个回调，当平台发现一个paper时，会调用这个回调
+    await platform.initialize((paper) => this.handleAddPaper(paper));
+    
     // Initialize platform-specific UI components
     await this.initializePlatformComponents(platform);
     
@@ -32,19 +48,43 @@ class UIManager {
     
     // 确保悬浮按钮可见
     this.floatingButton.show();
+    const savedData = await this.storage.get('savedPapers') || {};
+    this.papers = new Map(Object.entries(savedData));
+    this.floatingButton.setPaperCount(this.papers.size);
+  }
+
+  /**
+   * Handle adding a single paper to popup
+   * @param {Object} paper - Paper object to add
+   */
+  async handleAddPaper(paper) {
+    console.log(paper)
+    // 保存论文到存储
+    try {
+      // 检查论文是否已存在
+      if (!this.papers.has(paper.id)) {
+        // 添加论文到已保存的论文列表
+        this.papers.set(paper.id, paper);
+        // 将 Map 转换为对象后存储
+        await this.storage.set('savedPapers', Object.fromEntries(this.papers));
+        console.log(`论文 "${paper.title}" 已保存到存储`);
+      } else {
+        console.log(`论文 "${paper.title}" 已存在于存储中`);
+      }
+    } catch (error) {
+      console.error('保存论文到存储时出错:', error);
+    }
+
+    if (!this.popupWindow) return;
     
-    // Initialize popup window
-    this.popupWindow = new PopupWindow();
-    await this.popupWindow.initialize({
-      title: 'Research Summarizer',
-      query: this.getCurrentQuery(),
-      paperCount: platform.getPaperCount(),
-      currentPaperNumber: platform.getCurrentPaperNumber(),
-      onClose: () => this.hidePopup(),
-      onSummarizeAll: () => this.handleSummarizeAll(platform),
-      onDownloadAll: () => this.handleDownloadAll(platform),
-      onCompare: () => this.handleCompare(platform)
-    });
+    // Update the popup window with the single paper
+    this.popupWindow.updatePaperList(
+      Array.from(this.papers.values()),
+      (paperId) => this.handleSummarizeClick(paperId),
+      (paperId) => this.handleDownloadClick(paperId),
+      (paperId, selected) => this.handlePaperSelection(paperId, selected)
+    );
+    this.floatingButton.setPaperCount(this.papers.size);
   }
 
   /**
@@ -78,18 +118,18 @@ class UIManager {
   }
 
   /**
-   * Show the popup window
+   * Show the popup window 显示弹窗
    * @param {Object} platform - Platform adapter instance
    */
   async showPopup(platform) {
     if (!this.popupWindow) return;
     
     // Get papers from the platform
-    const papers = await platform.extractPapers();
+    // const papers = await platform.extractPapers();
     
     // Update the popup window with papers
     this.popupWindow.updatePaperList(
-      papers,
+      Array.from(this.papers.values()),
       (paperId) => this.handleSummarizeClick(paperId, platform),
       (paperId) => this.handleDownloadClick(paperId, platform),
       (paperId, selected) => this.handlePaperSelection(paperId, selected)
@@ -129,13 +169,37 @@ class UIManager {
   /**
    * Handle summarize click
    * @param {string} paperId - Paper ID
-   * @param {Object} platform - Platform adapter instance
+   * @param {Object} platform - Platform adapter instance (optional)
    */
   async handleSummarizeClick(paperId, platform) {
     try {
-      // Get paper
-      const papers = await platform.extractPapers();
-      const paper = papers.find(p => p.id === paperId);
+      let paper;
+      
+      // Try to find paper in platform if provided
+      if (platform) {
+        const papers = await platform.extractPapers();
+        paper = papers.find(p => p.id === paperId);
+      }
+      
+      // If platform not provided or paper not found in platform papers,
+      // try to find it directly from the popup window (for papers added via "Add to Research Summarizer" button)
+      if (!paper && this.popupWindow) {
+        // Find paper in the popup window's currently displayed papers
+        const paperElement = this.popupWindow.element.querySelector(`[data-paper-id="${paperId}"]`);
+        if (paperElement) {
+          // Extract necessary data from the paper element
+          const titleElement = paperElement.querySelector('.rs-popup-paper-title');
+          const authorsElement = paperElement.querySelector('.rs-popup-paper-authors');
+          const yearElement = paperElement.querySelector('.rs-popup-paper-year');
+          
+          paper = {
+            id: paperId,
+            title: titleElement ? titleElement.textContent : 'Unknown Title',
+            authors: authorsElement ? authorsElement.textContent : '',
+            year: yearElement ? yearElement.textContent : '',
+          };
+        }
+      }
       
       if (!paper) {
         console.error(`Paper with ID ${paperId} not found`);
@@ -176,16 +240,44 @@ class UIManager {
   /**
    * Handle download click
    * @param {string} paperId - Paper ID
-   * @param {Object} platform - Platform adapter instance
+   * @param {Object} platform - Platform adapter instance (optional)
    */
   async handleDownloadClick(paperId, platform) {
     try {
-      // Get paper
-      const papers = await platform.extractPapers();
-      const paper = papers.find(p => p.id === paperId);
+      let paper;
+      
+      // Try to find paper in platform if provided
+      if (platform) {
+        const papers = await platform.extractPapers();
+        paper = papers.find(p => p.id === paperId);
+      }
+      
+      // If platform not provided or paper not found in platform papers,
+      // try to find it directly from the popup window (for papers added via "Add to Research Summarizer" button)
+      if (!paper && this.popupWindow) {
+        // Find paper in the popup window's currently displayed papers
+        const paperElement = this.popupWindow.element.querySelector(`[data-paper-id="${paperId}"]`);
+        if (paperElement) {
+          // Extract necessary data from the paper element
+          const titleElement = paperElement.querySelector('.rs-popup-paper-title');
+          const downloadButton = paperElement.querySelector(`.rs-download-btn[data-paper-id="${paperId}"]`);
+          
+          paper = {
+            id: paperId,
+            title: titleElement ? titleElement.textContent : 'Unknown Title',
+            pdfUrl: downloadButton && !downloadButton.disabled ? downloadButton.dataset.pdfUrl : null
+          };
+        }
+      }
       
       if (!paper) {
         console.error(`Paper with ID ${paperId} not found`);
+        return;
+      }
+      
+      // If no PDF URL, show error
+      if (!paper.pdfUrl) {
+        this.showDownloadError(paperId, 'No PDF available for this paper');
         return;
       }
       
@@ -221,7 +313,7 @@ class UIManager {
    */
   async handleSummarizeAll(platform) {
     // Get all papers
-    const papers = await platform.extractPapers();
+    // const papers = await platform.extractPapers();
     
     // Show loading indicator for all papers
     papers.forEach(paper => {
@@ -263,7 +355,7 @@ class UIManager {
    */
   async handleDownloadAll(platform) {
     // Get all papers with PDF links
-    const papers = (await platform.extractPapers()).filter(paper => paper.pdfUrl);
+    // const papers = (await platform.extractPapers()).filter(paper => paper.pdfUrl);
     
     if (papers.length === 0) {
       alert('No papers with PDF links found');

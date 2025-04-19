@@ -250,7 +250,10 @@ class PopupWindow {
     downloadButton.className = 'rs-download-btn';
     downloadButton.dataset.paperId = paper.id;
     downloadButton.textContent = 'Download';
-    if (!paper.pdfUrl) {
+    // Store PDF URL in the button's data attributes
+    if (paper.pdfUrl) {
+      downloadButton.dataset.pdfUrl = paper.pdfUrl;
+    } else {
       downloadButton.disabled = true;
       downloadButton.title = 'No PDF available';
     }
