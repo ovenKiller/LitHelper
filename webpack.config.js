@@ -29,6 +29,13 @@ module.exports = {
       {
         test: /\.css$/,
         use: ['style-loader', 'css-loader']
+      },
+      {
+        test: /\.svg$/,
+        type: 'asset/resource',
+        generator: {
+          filename: 'icons/[name][ext]'
+        }
       }
     ]
   },
@@ -37,7 +44,8 @@ module.exports = {
       patterns: [
         { from: 'manifest.json', to: './' },
         { from: 'public', to: './public' },
-        { from: 'src/content/content.css', to: './content.css' }
+        { from: 'src/content/ui/styles', to: './content/ui/styles' },
+        { from: 'src/content/ui/icons', to: './icons' }
       ]
     })
   ]

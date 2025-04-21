@@ -8,13 +8,14 @@
  */
 
 import PlatformAdapter from '../base/PlatformAdapter';
-
+import ExtractorFactory from '../../extractors/ExtractorFactory';
 export default class GoogleScholarAdapter extends PlatformAdapter {
   constructor() {
     super();
     this.platformName = 'Google Scholar';
     this.allPapers = []; // Store all papers from current and next page
     this.onPaperAddedCallback = null; // Callback for when a paper is added
+    this.extractorFactory = new ExtractorFactory(); // Create an instance of ExtractorFactory
   }
 
   /**
@@ -33,7 +34,7 @@ export default class GoogleScholarAdapter extends PlatformAdapter {
    * @param {Function} onPaperAdded - Callback when a paper is added to popup
    */
   async initialize(onPaperAdded) {
-    console.log('Google Scholar adapter initializing...');
+    
     this.onPaperAddedCallback = onPaperAdded;
     
     // 注入按钮到页面
@@ -77,20 +78,78 @@ export default class GoogleScholarAdapter extends PlatformAdapter {
   }
 
   /**
+   * Extract paper information from all versions page, prioritizing arXiv version
+   * @param {Element} paperItem - The paper item element from search results
+   * @returns {Promise<Object|null>} Paper information from arXiv version if found
+   */
+  async extractPaperFromAllVersions(paperItem) {
+    try {
+      // Find the "All x versions" link
+      const allVersionsLink = Array.from(paperItem.querySelectorAll('.gs_fl a'))
+        .find(a => a.textContent.includes('All') && a.textContent.includes('version'));
+      
+      if (!allVersionsLink) {
+        return null;
+      }
+      console.log("allVersionsLink", allVersionsLink);
+
+      // Fetch the all versions page
+      const response = await fetch(allVersionsLink.href);
+      const text = await response.text();
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(text, 'text/html');
+
+      // Look for arXiv link in all versions
+      const paperItems = doc.querySelectorAll('.gs_r.gs_or.gs_scl');
+      for (const item of paperItems) {
+        const links = item.querySelectorAll('a');
+        for (const link of links) {
+          if (link.href.includes('arxiv.org')) {
+            // Found arXiv version, extract paper info using existing extractor
+            const extractor = this.extractorFactory.getExtractorForUrl(link.href);
+            if (extractor) {
+              return await extractor.extractFromUrl(link.href);
+            }
+          }
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error extracting paper from all versions:', error);
+      return null;
+    }
+  }
+
+  /**
    * 从论文条目元素中提取论文信息
    * @param {Element} item - 论文条目元素
    * @param {number} index - 论文索引
    * @returns {Object|null} - 提取的论文信息对象或null
    */
-  extractPaperInfo(item, index) {
+   async extractPaperInfo(item, index) {
+    // Try to get arXiv version first
+    const arXivPaperInfo = await this.extractPaperFromAllVersions(item);
+    console.log("arXivPaperInfo", arXivPaperInfo);
+    if (arXivPaperInfo) {
+      return {
+        ...arXivPaperInfo,
+        source: 'google_scholar'
+      };
+    }
+    
+    // If no arXiv version found, proceed with original extraction
     // 提取标题和链接
     const titleElement = item.querySelector('.gs_rt a');
     if (!titleElement) return null;
     
     const title = titleElement.textContent.trim();
     const url = titleElement.href;
-    
+    if (!url) return null;
+    const extractor = this.extractorFactory.getExtractorForUrl(url);
+    const paperInfo = extractor ? await extractor.extract(url) : null;
     // 提取作者、出版物和年份
+    console.log("extractPaperInfo", paperInfo);
     const infoElement = item.querySelector('.gs_a');
     let authors = '';
     let publication = '';

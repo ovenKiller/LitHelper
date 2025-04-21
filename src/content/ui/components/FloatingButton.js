@@ -14,11 +14,27 @@ class FloatingButton {
   }
 
   /**
+   * Load CSS file for the floating button
+   * @private
+   */
+  _loadStyles() {
+    const cssPath = chrome.runtime.getURL('content/ui/styles/FloatingButton.css');
+    if (!document.querySelector(`link[href="${cssPath}"]`)) {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.type = 'text/css';
+      link.href = cssPath;
+      document.head.appendChild(link);
+    }
+  }
+
+  /**
    * 参数是点击的动作，目前实现中，点击会调用togglePopup，使得popupWindow显示或隐藏
    * @param {Function} onClickCallback - Callback function when button is clicked
    * @returns {Promise<void>}
    */
   async initialize(onClickCallback) {
+    this._loadStyles();
     this.onClickCallback = onClickCallback;
     this.element = this.createElement();
     document.body.appendChild(this.element);
@@ -34,12 +50,6 @@ class FloatingButton {
     button.className = 'rs-floating-button';
     button.title = 'Research Summarizer';
     button.textContent = 'RS';
-    
-    // Create tooltip
-    this.tooltip = document.createElement('span');
-    this.tooltip.className = 'rs-tooltip';
-    this.tooltip.textContent = 'Research Summarizer';
-    button.appendChild(this.tooltip);
 
     // Create counter badge
     this.counterBadge = document.createElement('div');
@@ -61,6 +71,7 @@ class FloatingButton {
    * Show the floating button
    */
   show() {
+    console.log('show floating button');
     if (this.element) {
       this.element.style.display = 'flex';
       console.log('Floating button shown');
@@ -92,10 +103,16 @@ class FloatingButton {
    * @param {number} count - Number of collected papers
    */
   setPaperCount(count) {
+    if (typeof count !== 'number') {
+      console.warn('Invalid paper count provided:', count);
+      count = 0;
+    }
+    
     this.paperCount = count;
+    
     if (this.counterBadge) {
-      if (count > 0) {
-        this.counterBadge.textContent = count.toString();
+      if (this.paperCount > 0) {
+        this.counterBadge.textContent = this.paperCount.toString();
         this.counterBadge.style.display = 'flex';
       } else {
         this.counterBadge.style.display = 'none';

@@ -170,8 +170,12 @@ const DEFAULT_CONFIG = {
 ### 内容脚本UI增强：
 
 1. 修改平台适配器实现以注入新的UI元素
-2. 在`src/content/content.css`中添加新的CSS样式
-3. 更新平台适配器中的事件处理程序
+2. 在适当的组件样式表中添加新的CSS样式 `src/content/ui/styles/`：
+   - 对于通用样式：`base.css`
+   - 对于特定平台的样式：`platforms.css`
+   - 对于特定组件的样式：创建或修改相应的组件CSS文件
+3. 确保在 `src/content/ui/styles/index.css` 中导入任何新的CSS文件
+4. 更新平台适配器中的事件处理程序
 
 ### 弹出UI增强：
 

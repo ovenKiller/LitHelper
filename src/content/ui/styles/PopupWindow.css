@@ -4,142 +4,132 @@
  * Styles for the popup window component
  */
 
+/* 弹出窗口 */
 .rs-popup {
   position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 80%;
-  max-width: 800px;
-  max-height: 80vh;
+  bottom: 100px;
+  right: 30px;
+  width: 520px;
+  max-height: 70vh;
   background-color: white;
   border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-  z-index: 10000;
-  display: flex;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+  z-index: 9999;
+  display: none;
   flex-direction: column;
+  animation: rs-popup-show 0.3s ease;
   overflow: hidden;
 }
 
+@keyframes rs-popup-show {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* 弹出窗口头部 */
 .rs-popup-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 15px 20px;
+  padding: 16px;
+  border-bottom: 1px solid #e0e0e0;
   background-color: #4285f4;
   color: white;
 }
 
 .rs-popup-header h2 {
   margin: 0;
-  font-size: 20px;
+  font-size: 18px;
+  font-weight: 500;
 }
 
 .rs-popup-close {
-  background: none;
+  background: none !important;
   border: none;
-  color: white;
+  color: white !important;
   font-size: 24px;
   cursor: pointer;
-  padding: 0;
+  padding: 0 !important;
+  margin: 0 !important;
   width: 30px;
   height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: background-color 0.2s;
   border-radius: 50%;
-  transition: background-color 0.3s ease;
 }
 
 .rs-popup-close:hover {
-  background-color: rgba(255, 255, 255, 0.2);
+  background-color: rgba(255, 255, 255, 0.2) !important;
 }
 
+/* 内容包装器 */
+.rs-popup-content-wrapper {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* 弹出窗口内容 */
 .rs-popup-content {
-  padding: 20px;
+  padding: 16px;
+  padding-bottom: 0; /* Remove bottom padding to avoid double padding with fixed action buttons */
   overflow-y: auto;
   flex: 1;
 }
 
 .rs-popup-query {
-  margin-bottom: 15px;
-  font-size: 14px;
-  color: #666;
+  font-weight: 500;
+  margin-bottom: 8px;
+  font-size: 15px;
 }
 
 .rs-popup-paper-count {
-  margin-bottom: 15px;
-  font-weight: bold;
+  color: #666;
+  margin-bottom: 16px;
+  font-size: 14px;
 }
 
+/* 批处理按钮 */
 .rs-popup-batch-actions {
   display: flex;
-  gap: 10px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e0e0e0;
 }
 
-.rs-popup-batch-actions button {
-  padding: 8px 15px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-weight: bold;
-  transition: background-color 0.3s ease;
+/* 论文列表容器 */
+.rs-popup-paper-list-container {
+  overflow-y: auto;
+  max-height: calc(50vh - 120px); /* Adjust for header and other fixed elements */
+  margin-bottom: 16px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 8px;
 }
 
-.rs-batch-summarize-btn {
-  background-color: #4285f4;
-  color: white;
-}
-
-.rs-batch-summarize-btn:hover {
-  background-color: #3367d6;
-}
-
-.rs-batch-download-btn {
-  background-color: #34a853;
-  color: white;
-}
-
-.rs-batch-download-btn:hover {
-  background-color: #2d8a46;
-}
-
-.rs-compare-btn {
-  background-color: #fbbc05;
-  color: white;
-}
-
-.rs-compare-btn:hover:not(:disabled) {
-  background-color: #e0a800;
-}
-
-.rs-compare-btn:disabled {
-  background-color: #ccc;
-  cursor: not-allowed;
-}
-
+/* 论文列表 */
 .rs-popup-paper-list {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 16px;
 }
 
 .rs-popup-paper-item {
   display: flex;
-  align-items: center;
-  padding: 15px;
-  border: 1px solid #eee;
-  border-radius: 4px;
-  transition: background-color 0.3s ease;
-}
-
-.rs-popup-paper-item:hover {
-  background-color: #f9f9f9;
-}
-
-.rs-paper-checkbox {
-  margin-right: 15px;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  background-color: #f8f9fa;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .rs-popup-paper-info {
@@ -147,56 +137,145 @@
 }
 
 .rs-popup-paper-title {
-  font-weight: bold;
-  margin-bottom: 5px;
+  font-weight: 500;
+  margin-bottom: 4px;
+  font-size: 15px;
 }
 
-.rs-popup-paper-authors {
-  font-size: 14px;
-  color: #666;
-  margin-bottom: 3px;
-}
-
+.rs-popup-paper-authors,
 .rs-popup-paper-year {
-  font-size: 12px;
-  color: #999;
+  color: #666;
+  font-size: 13px;
 }
 
 .rs-popup-paper-actions {
   display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Toggle switch styles */
+.rs-toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 24px;
+}
+
+.rs-toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.rs-toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  transition: .4s;
+  border-radius: 24px;
+}
+
+.rs-toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 4px;
+  bottom: 4px;
+  background-color: white;
+  transition: .4s;
+  border-radius: 50%;
+}
+
+input:checked + .rs-toggle-slider {
+  background-color: #2196F3;
+}
+
+input:checked + .rs-toggle-slider:before {
+  transform: translateX(26px);
+}
+
+/* 操作按钮固定在底部 */
+.rs-action-buttons-fixed {
+  position: sticky;
+  bottom: 0;
+  background-color: white;
+  padding: 16px;
+  border-top: 1px solid #e0e0e0;
+  z-index: 1;
+  box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.05);
+}
+
+/* Paper remove button (SVG icon) */
+.rs-popup-paper-remove {
+  color: #999;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 8px;
+  align-self: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rs-popup-paper-remove:hover {
+  color: #f44336;
+}
+
+.rs-popup-paper-remove svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+}
+
+/* Delete icon image */
+.rs-delete-icon {
+  width: 18px;
+  height: 18px;
+  opacity: 0.6;
+  transition: opacity 0.3s ease;
+}
+
+.rs-popup-paper-remove:hover .rs-delete-icon {
+  opacity: 1;
+}
+
+/* Action buttons section */
+.rs-action-buttons {
+  display: flex;
+  flex-direction: column;
   gap: 10px;
 }
 
-.rs-popup-paper-actions button {
-  padding: 6px 12px;
+/* Toggle options */
+.rs-toggle-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+}
+
+/* Start organize button */
+.rs-start-organize-btn {
+  margin-top: 10px;
+  padding: 12px;
+  background-color: #4CAF50;
+  color: white;
   border: none;
   border-radius: 4px;
+  font-size: 16px;
   cursor: pointer;
-  font-size: 12px;
+  text-align: center;
   transition: background-color 0.3s ease;
 }
 
-.rs-summarize-btn {
-  background-color: #4285f4;
-  color: white;
-}
-
-.rs-summarize-btn:hover {
-  background-color: #3367d6;
-}
-
-.rs-download-btn {
-  background-color: #34a853;
-  color: white;
-}
-
-.rs-download-btn:hover:not(:disabled) {
-  background-color: #2d8a46;
-}
-
-.rs-download-btn:disabled {
-  background-color: #ccc;
-  cursor: not-allowed;
+.rs-start-organize-btn:hover {
+  background-color: #45a049;
 }
 
 /* Loading and success states */

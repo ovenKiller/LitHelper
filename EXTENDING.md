@@ -170,8 +170,12 @@ const DEFAULT_CONFIG = {
 ### Content Script UI Enhancements:
 
 1. Modify platform adapter implementations to inject new UI elements
-2. Add new CSS styles in `src/content/content.css`
-3. Update event handlers in platform adapters
+2. Add new CSS styles in the appropriate component stylesheet in `src/content/ui/styles/`:
+   - For common styles: `base.css`
+   - For platform-specific styles: `platforms.css`
+   - For component-specific styles: Create or modify the respective component CSS file
+3. Make sure to import any new CSS files in `src/content/ui/styles/index.css`
+4. Update event handlers in platform adapters
 
 ### Popup UI Enhancements:
 

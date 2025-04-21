@@ -6,28 +6,27 @@
 
 .rs-floating-button {
   position: fixed;
-  bottom: 20px;
-  right: 20px;
-  width: 50px;
-  height: 50px;
+  bottom: 30px;
+  right: 30px;
+  width: 60px;
+  height: 60px;
   border-radius: 50%;
   background-color: #4285f4;
   color: white;
-  font-weight: bold;
-  font-size: 16px;
   border: none;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  font-size: 18px;
+  font-weight: bold;
   cursor: pointer;
-  z-index: 9999;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  z-index: 10000;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.3s ease;
-  position: relative;
+  transition: background-color 0.3s, transform 0.2s;
 }
 
 .rs-floating-button:hover {
-  background-color: #3367d6;
+  background-color: #1a73e8;
   transform: scale(1.05);
 }
 
@@ -52,7 +51,6 @@
 
 .rs-floating-button:hover .rs-tooltip {
   opacity: 1;
-  visibility: visible;
 }
 
 .rs-counter-badge {

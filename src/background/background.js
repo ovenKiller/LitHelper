@@ -99,6 +99,9 @@ async function handleAction(message, sender) {
       notifyConfigUpdate(data);
       return { success: true };
       
+    case 'fetchPageContent':
+      return await fetchPageContent(data.url);
+      
     case 'summarizePaper':
       return await summarizePaper(data.paper, data.options);
       
@@ -316,6 +319,30 @@ async function batchDownloadPapers(papers) {
 async function findPDFUrl(paper) {
   // 在实际实现中，这将尝试从论文页面或其他来源查找PDF URL
   return paper.pdfUrl || null;
+}
+
+// 获取网页内容 - 解决CORS问题
+async function fetchPageContent(url) {
+  console.log('获取网页内容:', url);
+  
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`HTTP错误: ${response.status}`);
+    }
+    
+    const htmlContent = await response.text();
+    return {
+      success: true,
+      data: htmlContent
+    };
+  } catch (error) {
+    console.error('获取网页内容失败:', error);
+    return {
+      success: false,
+      error: error.message || '获取网页内容失败'
+    };
+  }
 }
 
 // 当扩展安装或更新时

@@ -14,24 +14,39 @@ class PaperControls {
   }
 
   /**
+   * Load CSS file for the paper controls
+   * @private
+   */
+  _loadStyles() {
+    const cssPath = chrome.runtime.getURL('content/ui/styles/PaperControls.css');
+    if (!document.querySelector(`link[href="${cssPath}"]`)) {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.type = 'text/css';
+      link.href = cssPath;
+      document.head.appendChild(link);
+    }
+  }
+
+  /**
    * Initialize the paper controls
-   * @param {Object} options - Configuration options
-   * @param {boolean} options.hasPdf - Whether the paper has a PDF link
-   * @param {Function} options.onSummarize - Callback for summarize action
-   * @param {Function} options.onDownload - Callback for download action
+   * @param {Function} onSummarize - Callback when summarize button is clicked
+   * @param {Function} onDownload - Callback when download button is clicked
    * @returns {Promise<void>}
    */
-  async initialize(options) {
-    this.element = this.createElement(options);
+  async initialize(onSummarize, onDownload) {
+    this._loadStyles();
+    this.element = this.createElement(onSummarize, onDownload);
     this.container.appendChild(this.element);
   }
 
   /**
    * Create the paper controls element
-   * @param {Object} options - Configuration options
+   * @param {Function} onSummarize - Callback when summarize button is clicked
+   * @param {Function} onDownload - Callback when download button is clicked
    * @returns {HTMLElement}
    */
-  createElement(options) {
+  createElement(onSummarize, onDownload) {
     // Create controls container
     const container = document.createElement('div');
     container.className = 'rs-controls';
@@ -44,8 +59,8 @@ class PaperControls {
     this.summarizeButton.title = 'Summarize this paper';
     this.summarizeButton.textContent = 'Summarize';
     this.summarizeButton.addEventListener('click', () => {
-      if (options.onSummarize) {
-        options.onSummarize(this.paperId);
+      if (onSummarize) {
+        onSummarize(this.paperId);
       }
     });
     container.appendChild(this.summarizeButton);
@@ -63,8 +78,8 @@ class PaperControls {
       this.downloadButton.title = 'No PDF available';
     } else {
       this.downloadButton.addEventListener('click', () => {
-        if (options.onDownload) {
-          options.onDownload(this.paperId);
+        if (onDownload) {
+          onDownload(this.paperId);
         }
       });
     }

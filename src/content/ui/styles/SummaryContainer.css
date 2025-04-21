@@ -5,60 +5,52 @@
  */
 
 .rs-summary-container {
-  margin-top: 15px;
-  border: 1px solid #eee;
-  border-radius: 4px;
-  overflow: hidden;
+  margin-top: 12px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  background-color: #f1f8ff;
+  border: 1px solid #c0d7ea;
   position: relative;
 }
 
 .rs-summary-title {
-  padding: 10px 15px;
-  background-color: #4285f4;
-  color: white;
-  font-weight: bold;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  font-weight: 500;
+  margin-bottom: 8px;
+  color: #4285f4;
 }
 
 .rs-summary-content {
-  padding: 15px;
-  background-color: #f9f9f9;
-  max-height: 300px;
-  overflow-y: auto;
+  font-size: 14px;
   line-height: 1.5;
 }
 
 .rs-summary-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
   background: none;
   border: none;
-  color: white;
-  font-size: 18px;
+  color: #666;
+  font-size: 16px;
   cursor: pointer;
-  padding: 0;
   width: 24px;
   height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  transition: background-color 0.3s ease;
 }
 
 .rs-summary-close:hover {
-  background-color: rgba(255, 255, 255, 0.2);
+  background-color: rgba(0, 0, 0, 0.1);
 }
 
 .rs-summary-error {
-  border-color: #ea4335;
-}
-
-.rs-summary-error .rs-summary-title {
-  background-color: #ea4335;
+  background-color: #fef2f2;
+  border-color: #f87171;
 }
 
 .rs-error-message {
-  color: #ea4335;
-  font-weight: bold;
+  color: #b91c1c;
 } 

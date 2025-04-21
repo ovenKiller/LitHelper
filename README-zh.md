@@ -36,8 +36,20 @@
 │   │   └── background.js      # 主后台服务工作线程
 │   ├── content/               # 内容脚本（在网页中运行）
 │   │   ├── content.js         # 主内容脚本
-│   │   ├── content.css        # 注入UI元素的样式
-│   │   └── platforms/         # 平台特定内容脚本
+│   │   ├── core/              # 核心功能
+│   │   ├── platforms/         # 平台特定内容脚本
+│   │   └── ui/                # UI相关代码
+│   │       ├── components/    # UI组件
+│   │       ├── icons/         # UI图标
+│   │       ├── styles/        # CSS样式
+│   │       │   ├── index.css  # 主样式导入器
+│   │       │   ├── base.css   # 通用共享样式
+│   │       │   ├── platforms.css # 特定平台的样式
+│   │       │   ├── FloatingButton.css # 组件特定样式
+│   │       │   ├── PopupWindow.css
+│   │       │   ├── SummaryContainer.css
+│   │       │   └── PaperControls.css
+│   │       └── UIManager.js   # UI管理
 │   ├── popup/                 # 扩展弹出UI
 │   │   ├── components/        # 弹出UI组件
 │   │   └── pages/             # 弹出UI中的不同页面

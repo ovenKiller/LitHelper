@@ -33,7 +33,8 @@ class UIManager {
       onClose: () => this.hidePopup(),
       onSummarizeAll: () => this.handleSummarizeAll(platform),
       onDownloadAll: () => this.handleDownloadAll(platform),
-      onCompare: () => this.handleCompare(platform)
+      onCompare: () => this.handleCompare(platform),
+      onRemovePaper: (paperId) => this.handleRemovePaper(paperId)
     });
 
     // 给平台（例如Google Scholar）添加一个回调，当平台发现一个paper时，会调用这个回调
@@ -130,9 +131,7 @@ class UIManager {
     // Update the popup window with papers
     this.popupWindow.updatePaperList(
       Array.from(this.papers.values()),
-      (paperId) => this.handleSummarizeClick(paperId, platform),
-      (paperId) => this.handleDownloadClick(paperId, platform),
-      (paperId, selected) => this.handlePaperSelection(paperId, selected)
+      (paperId) => this.handleRemovePaper(paperId)
     );
     
     // Show the popup window
@@ -147,6 +146,30 @@ class UIManager {
       this.popupWindow.hide();
     }
   }
+
+  //论文删除后更新存储。而弹窗的更新放在popupWindow中
+  async handleRemovePaper(paperId) {
+    if (!this.papers) {
+      console.warn('Papers map is not initialized');
+      return;
+    }
+
+    this.papers.delete(paperId);
+    
+    // Update floating button count
+    if (this.floatingButton) {
+      this.floatingButton.setPaperCount(this.papers.size);
+    }
+
+    // Update storage
+    try {
+      await this.storage.set('savedPapers', Object.fromEntries(this.papers));
+      console.log(`Paper ${paperId} successfully removed`);
+    } catch (error) {
+      console.error('Error updating storage after paper removal:', error);
+    }
+  }
+  
 
   /**
    * Handle paper selection

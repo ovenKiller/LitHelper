@@ -43,13 +43,18 @@
         "*://arxiv.org/*"
       ],
       "js": ["content.js"],
-      "css": ["content.css"],
+      "css": ["content/ui/styles/index.css"],
       "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["public/css/*", "public/images/*"],
+      "resources": [
+        "public/css/*",
+        "public/images/*", 
+        "public/icons/*",
+        "content/ui/styles/*"
+      ],
       "matches": ["<all_urls>"]
     }
   ],

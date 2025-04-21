@@ -4,15 +4,38 @@
  * A popup window component that can be used across different platforms
  */
 
+// 从public目录加载SVG图标
+const DELETE_ICON_PATH = 'public/icons/delete-icon.svg';
+
 class PopupWindow {
   constructor() {
     this.element = null;
     this.header = null;
     this.content = null;
     this.paperList = null;
-    this.batchActions = null;
+    this.actionButtons = null;
     this.isVisible = false;
+    this.selectedOptions = {
+      downloadPdf: false,
+      aiTranslate: false, 
+      generateMindMap: false
+    };
     console.log('PopupWindow constructor');
+  }
+
+  /**
+   * Load CSS file for the popup window
+   * @private
+   */
+  _loadStyles() {
+    const cssPath = chrome.runtime.getURL('content/ui/styles/PopupWindow.css');
+    if (!document.querySelector(`link[href="${cssPath}"]`)) {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.type = 'text/css';
+      link.href = cssPath;
+      document.head.appendChild(link);
+    }
   }
 
   /**
@@ -21,21 +44,20 @@ class PopupWindow {
    * @param {string} options.title - Popup title
    * @param {string} options.query - Current search query
    * @param {Function} options.onClose - Callback when popup is closed
-   * @param {Function} options.onSummarizeAll - Callback for summarize all action
-   * @param {Function} options.onDownloadAll - Callback for download all action
-   * @param {Function} options.onCompare - Callback for compare action
+   * @param {Function} options.onStartOrganize - Callback for "开始整理" action
+   * @param {Function} options.onRemovePaper - Callback for removing a paper
    * @returns {Promise<void>}
    */
   async initialize(options) {
+    this._loadStyles();
     this.element = this.createElement(options);
     document.body.appendChild(this.element);
     this.isVisible = false;
     this.element.style.display = 'none';
-    console.log("paperCount",options.paperCount,"currentPaperNumber",options.currentPaperNumber);
   }
 
   /**
-   * Create the popup window element
+   * 创建popup窗口
    * @param {Object} options - Configuration options
    * @returns {HTMLElement}
    */
@@ -43,10 +65,16 @@ class PopupWindow {
     // Create popup container
     const popup = document.createElement('div');
     popup.className = 'rs-popup';
-    console.log(options);
+    popup.style.display = 'flex'; // Ensure flex display
+    
+    // Create wrapper for content (everything except action buttons)
+    const contentWrapper = document.createElement('div');
+    contentWrapper.className = 'rs-popup-content-wrapper';
+    popup.appendChild(contentWrapper);
+    
     // Create header
     this.header = this.createHeader(options.title, options.onClose);
-    popup.appendChild(this.header);
+    contentWrapper.appendChild(this.header);
     
     // Create content
     this.content = document.createElement('div');
@@ -58,25 +86,24 @@ class PopupWindow {
     queryInfo.textContent = `Current search: "${options.query || 'Unknown query'}"`;
     this.content.appendChild(queryInfo);
     
-    // Create paper count
-    const paperCount = document.createElement('div');
-    paperCount.className = 'rs-popup-paper-count';
-    this.content.appendChild(paperCount);
     
-    // Create batch actions
-    this.batchActions = this.createBatchActions(
-      options.onSummarizeAll,
-      options.onDownloadAll,
-      options.onCompare
-    );
-    this.content.appendChild(this.batchActions);
+    // Create scrollable paper list container
+    const paperListContainer = document.createElement('div');
+    paperListContainer.className = 'rs-popup-paper-list-container';
     
     // Create paper list
     this.paperList = document.createElement('div');
     this.paperList.className = 'rs-popup-paper-list';
-    this.content.appendChild(this.paperList);
+    paperListContainer.appendChild(this.paperList);
+    this.content.appendChild(paperListContainer);
     
-    popup.appendChild(this.content);
+    // Add content to wrapper
+    contentWrapper.appendChild(this.content);
+    
+    // Create action buttons section as a separate fixed section
+    this.actionButtons = this.createActionButtons(options.onStartOrganize);
+    this.actionButtons.className = 'rs-action-buttons rs-action-buttons-fixed';
+    popup.appendChild(this.actionButtons);
     
     return popup;
   }
@@ -112,75 +139,78 @@ class PopupWindow {
   }
 
   /**
-   * Create batch actions section
-   * @param {Function} onSummarizeAll - Callback for summarize all action
-   * @param {Function} onDownloadAll - Callback for download all action
-   * @param {Function} onCompare - Callback for compare action
+   * Create action buttons section
+   * @param {Function} onStartOrganize - Callback for "开始整理" action
    * @returns {HTMLElement}
    */
-  createBatchActions(onSummarizeAll, onDownloadAll, onCompare) {
-    const batchActions = document.createElement('div');
-    batchActions.className = 'rs-popup-batch-actions';
+  createActionButtons(onStartOrganize) {
+    const actionButtons = document.createElement('div');
+    actionButtons.className = 'rs-action-buttons';
     
-    // Create summarize all button
-    const summarizeAllButton = document.createElement('button');
-    summarizeAllButton.className = 'rs-batch-summarize-btn';
-    summarizeAllButton.textContent = 'Summarize All Papers';
-    summarizeAllButton.addEventListener('click', () => {
-      if (onSummarizeAll) {
-        onSummarizeAll();
+    // Create toggle options
+    const options = [
+      { id: 'downloadPdf', label: '下载PDF' },
+      { id: 'aiTranslate', label: 'AI翻译' },
+      { id: 'generateMindMap', label: '生成思维导图' }
+    ];
+    
+    options.forEach(option => {
+      const toggleOption = document.createElement('div');
+      toggleOption.className = 'rs-toggle-option';
+      
+      const label = document.createElement('label');
+      label.textContent = option.label;
+      toggleOption.appendChild(label);
+      
+      const toggleSwitch = document.createElement('label');
+      toggleSwitch.className = 'rs-toggle-switch';
+      
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.id = `rs-${option.id}`;
+      checkbox.addEventListener('change', (e) => {
+        this.selectedOptions[option.id] = e.target.checked;
+      });
+      
+      const slider = document.createElement('span');
+      slider.className = 'rs-toggle-slider';
+      
+      toggleSwitch.appendChild(checkbox);
+      toggleSwitch.appendChild(slider);
+      
+      toggleOption.appendChild(toggleSwitch);
+      actionButtons.appendChild(toggleOption);
+    });
+    
+    // Create "开始整理" button
+    const startOrganizeButton = document.createElement('button');
+    startOrganizeButton.className = 'rs-start-organize-btn';
+    startOrganizeButton.textContent = '开始整理';
+    startOrganizeButton.addEventListener('click', () => {
+      if (onStartOrganize) {
+        onStartOrganize(this.selectedOptions);
       }
     });
-    batchActions.appendChild(summarizeAllButton);
+    actionButtons.appendChild(startOrganizeButton);
     
-    // Create download all button
-    const downloadAllButton = document.createElement('button');
-    downloadAllButton.className = 'rs-batch-download-btn';
-    downloadAllButton.textContent = 'Download All PDFs';
-    downloadAllButton.addEventListener('click', () => {
-      if (onDownloadAll) {
-        onDownloadAll();
-      }
-    });
-    batchActions.appendChild(downloadAllButton);
-    
-    // Create compare button
-    const compareButton = document.createElement('button');
-    compareButton.className = 'rs-compare-btn';
-    compareButton.textContent = 'Compare Selected Papers';
-    compareButton.disabled = true;
-    compareButton.addEventListener('click', () => {
-      if (onCompare) {
-        onCompare();
-      }
-    });
-    batchActions.appendChild(compareButton);
-    
-    return batchActions;
+    return actionButtons;
   }
 
   /**
    * Update the paper list
    * @param {Array} papers - Array of paper objects
-   * @param {Function} onSummarize - Callback for summarize action
-   * @param {Function} onDownload - Callback for download action
-   * @param {Function} onSelect - Callback for paper selection
+   * @param {Function} onRemovePaper - Callback for paper removal
    */
-  updatePaperList(papers, onSummarize, onDownload, onSelect) {
+  updatePaperList(papers, onRemovePaper) {
     if (!this.paperList) return;
     
-    // Update paper count
-    const paperCount = this.element.querySelector('.rs-popup-paper-count');
-    if (paperCount) {
-      paperCount.textContent = `${papers.length} papers found on this page`;
-    }
     
     // Clear existing list
     this.paperList.innerHTML = '';
     
     // Add papers to list
     papers.forEach(paper => {
-      const paperItem = this.createPaperItem(paper, onSummarize, onDownload, onSelect);
+      const paperItem = this.createPaperItem(paper, onRemovePaper);
       this.paperList.appendChild(paperItem);
     });
   }
@@ -188,27 +218,13 @@ class PopupWindow {
   /**
    * Create a paper item element
    * @param {Object} paper - Paper object
-   * @param {Function} onSummarize - Callback for summarize action
-   * @param {Function} onDownload - Callback for download action
-   * @param {Function} onSelect - Callback for paper selection
+   * @param {Function} onRemovePaper - Callback for paper removal
    * @returns {HTMLElement}
    */
-  createPaperItem(paper, onSummarize, onDownload, onSelect) {
+  createPaperItem(paper, onRemovePaper) {
     const paperItem = document.createElement('div');
     paperItem.className = 'rs-popup-paper-item';
     paperItem.dataset.paperId = paper.id;
-    
-    // Create checkbox for selection
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.className = 'rs-paper-checkbox';
-    checkbox.dataset.paperId = paper.id;
-    checkbox.addEventListener('change', () => {
-      if (onSelect) {
-        onSelect(paper.id, checkbox.checked);
-      }
-    });
-    paperItem.appendChild(checkbox);
     
     // Create paper info
     const paperInfo = document.createElement('div');
@@ -231,40 +247,45 @@ class PopupWindow {
     
     paperItem.appendChild(paperInfo);
     
-    // Create paper actions
-    const paperActions = document.createElement('div');
-    paperActions.className = 'rs-popup-paper-actions';
+    // Create remove button (SVG icon)
+    const removeButton = document.createElement('div');
+    removeButton.className = 'rs-popup-paper-remove';
     
-    const summarizeButton = document.createElement('button');
-    summarizeButton.className = 'rs-summarize-btn';
-    summarizeButton.dataset.paperId = paper.id;
-    summarizeButton.textContent = 'Summarize';
-    summarizeButton.addEventListener('click', () => {
-      if (onSummarize) {
-        onSummarize(paper.id);
+    // 使用图片标签加载SVG
+    const img = document.createElement('img');
+    img.src = chrome.runtime.getURL(DELETE_ICON_PATH);
+    img.alt = 'Delete';
+    img.className = 'rs-delete-icon';
+    removeButton.appendChild(img);
+    
+    removeButton.addEventListener('click', async () => {
+      try {
+        if (onRemovePaper) {
+          // 先调用回调函数，等待删除操作完成
+          await onRemovePaper(paper.id);
+          // 移除DOM元素
+          paperItem.remove();
+        }
+      } catch (error) {
+        console.error(`Failed to remove paper ${paper.id}:`, error);
+        // 添加错误提示UI
+        const errorMessage = document.createElement('div');
+        errorMessage.className = 'rs-error-message';
+        errorMessage.textContent = 'Failed to remove paper. Please try again.';
+        errorMessage.style.color = 'red';
+        errorMessage.style.fontSize = '12px';
+        errorMessage.style.marginTop = '4px';
+        
+        // 将错误消息插入到paperItem中
+        paperItem.appendChild(errorMessage);
+        
+        // 3秒后移除错误消息
+        setTimeout(() => {
+          errorMessage.remove();
+        }, 3000);
       }
     });
-    paperActions.appendChild(summarizeButton);
-    
-    const downloadButton = document.createElement('button');
-    downloadButton.className = 'rs-download-btn';
-    downloadButton.dataset.paperId = paper.id;
-    downloadButton.textContent = 'Download';
-    // Store PDF URL in the button's data attributes
-    if (paper.pdfUrl) {
-      downloadButton.dataset.pdfUrl = paper.pdfUrl;
-    } else {
-      downloadButton.disabled = true;
-      downloadButton.title = 'No PDF available';
-    }
-    downloadButton.addEventListener('click', () => {
-      if (onDownload) {
-        onDownload(paper.id);
-      }
-    });
-    paperActions.appendChild(downloadButton);
-    
-    paperItem.appendChild(paperActions);
+    paperItem.appendChild(removeButton);
     
     return paperItem;
   }
@@ -274,7 +295,7 @@ class PopupWindow {
    */
   show() {
     if (this.element) {
-      this.element.style.display = 'block';
+      this.element.style.display = 'flex';
       this.isVisible = true;
     }
   }
@@ -299,14 +320,11 @@ class PopupWindow {
   }
 
   /**
-   * Update the compare button state
-   * @param {boolean} enabled - Whether the compare button should be enabled
+   * Get the selected options
+   * @returns {Object} The selected options
    */
-  updateCompareButton(enabled) {
-    const compareButton = this.element.querySelector('.rs-compare-btn');
-    if (compareButton) {
-      compareButton.disabled = !enabled;
-    }
+  getSelectedOptions() {
+    return this.selectedOptions;
   }
 }
 

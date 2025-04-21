@@ -4,7 +4,9 @@
  * Main CSS file that imports all component styles
  */
 
+@import './base.css';
 @import './FloatingButton.css';
 @import './PopupWindow.css';
 @import './PaperControls.css';
-@import './SummaryContainer.css'; 
+@import './SummaryContainer.css';
+@import './platforms.css'; 

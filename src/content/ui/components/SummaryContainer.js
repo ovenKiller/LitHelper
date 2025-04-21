@@ -12,11 +12,26 @@ class SummaryContainer {
   }
 
   /**
+   * Load CSS file for the summary container
+   * @private
+   */
+  _loadStyles() {
+    const cssPath = chrome.runtime.getURL('content/ui/styles/SummaryContainer.css');
+    if (!document.querySelector(`link[href="${cssPath}"]`)) {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.type = 'text/css';
+      link.href = cssPath;
+      document.head.appendChild(link);
+    }
+  }
+
+  /**
    * Initialize the summary container
    * @returns {Promise<void>}
    */
   async initialize() {
-    // Create and append the component element
+    this._loadStyles();
     this.element = this.createElement();
     this.container.appendChild(this.element);
   }
