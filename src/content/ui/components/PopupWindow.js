@@ -49,11 +49,21 @@ class PopupWindow {
    * @returns {Promise<void>}
    */
   async initialize(options) {
-    this._loadStyles();
-    this.element = this.createElement(options);
-    document.body.appendChild(this.element);
-    this.isVisible = false;
-    this.element.style.display = 'none';
+    try {
+      // 加载样式
+      this._loadStyles();
+
+      // 创建元素
+      this.element = this.createElement(options);
+      document.body.appendChild(this.element);
+      
+      // 设置初始状态
+      this.isVisible = false;
+      this.element.style.display = 'none';
+    } catch (error) {
+      console.error('Failed to initialize popup window:', error);
+      throw error;
+    }
   }
 
   /**

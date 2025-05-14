@@ -1,20 +1,56 @@
 /**
  * config.js
  * 
- * Configuration management for the extension
+ * 统一的配置管理模块，负责存储和管理扩展的所有设置
  */
 
 import { storage } from '../utils/storage';
 
-// Default configuration
+// 默认配置
 const DEFAULT_CONFIG = {
-  llm: {
-    provider: 'openai', // Default LLM provider
-    apiKey: '',         // User's API key
-    model: 'gpt-4',     // Default model
-    maxTokens: 2000,    // Default token limit
-    temperature: 0.7    // Default temperature
+  aiModels: [
+  {
+    name: 'DeepSeek',
+    apiKey: '',
+    url: 'https://api.deepseek.com',
+    models: 'deepseek-chat',
+    selectedModel: 'deepseek-chat',
+    maxTokens: 2000,
+    temperature: 0.7,
+    active: false
   },
+  {
+    name: 'OpenAI',
+    apiKey: '',
+    url: 'https://api.openai.com',
+    models: ['gpt-4', 'gpt-3.5-turbo'],
+    selectedModel: 'gpt-4',
+    maxTokens: 2000,
+    temperature: 0.7,
+    active: false
+  },
+  {
+    name: 'Claude',
+    apiKey: '',
+    url: 'https://api.anthropic.com',
+    models: ['claude-3-opus', 'claude-3-sonnet', 'claude-3-haiku'],
+    selectedModel: 'claude-3-opus',
+    maxTokens: 2000,
+    temperature: 0.7,
+    active: false
+  },
+  {
+    name: 'Gemini',
+    apiKey: '',
+    url: 'https://api.google.com',
+    models: ['gemini-pro', 'gemini-pro-2'],
+    selectedModel: 'gemini-pro',
+    maxTokens: 2000,
+    temperature: 0.7,
+    active: false
+  }
+  ],
+  selectedAiModel: null,
   summarization: {
     categories: [
       { id: 'methodology', name: 'Methodology', enabled: true },
@@ -25,27 +61,11 @@ const DEFAULT_CONFIG = {
     maxPapersPerBatch: 10,
     includeAbstract: true,
     includeCitations: true
-  },
-  platforms: {
-    googleScholar: { enabled: true },
-    ieee: { enabled: true },
-    acm: { enabled: true },
-    arxiv: { enabled: true }
-  },
-  ui: {
-    theme: 'light',
-    highlightColor: '#ffeb3b',
-    badgePosition: 'topRight',
-    showNotifications: true
-  },
-  storage: {
-    maxSavedSummaries: 100,
-    maxDownloadedPapers: 50
   }
 };
 
 /**
- * Configuration class for managing extension settings
+ * 配置类 - 管理扩展的所有设置
  */
 class Config {
   constructor() {
@@ -54,8 +74,8 @@ class Config {
   }
 
   /**
-   * Initialize configuration from storage or defaults
-   * @returns {Promise<Object>} The current configuration
+   * 初始化配置，从存储中加载或使用默认值
+   * @returns {Promise<Object>} 当前配置
    */
   async init() {
     try {
@@ -65,57 +85,57 @@ class Config {
         { ...DEFAULT_CONFIG };
       return this.currentConfig;
     } catch (error) {
-      console.error('Failed to initialize config:', error);
+      console.error('初始化配置失败:', error);
       this.currentConfig = { ...DEFAULT_CONFIG };
       return this.currentConfig;
     }
   }
 
   /**
-   * Get the current configuration
-   * @returns {Object} The current configuration
+   * 获取当前配置
+   * @returns {Object} 当前配置
    */
   getConfig() {
     if (!this.currentConfig) {
-      // Return a copy of defaults if not initialized
+      // 如果未初始化，返回默认值副本
       return { ...DEFAULT_CONFIG };
     }
     return { ...this.currentConfig };
   }
 
   /**
-   * Update configuration
-   * @param {Object} newConfig - New configuration values to apply
-   * @returns {Promise<Object>} Updated configuration
+   * 更新配置
+   * @param {Object} newConfig - 要应用的新配置值
+   * @returns {Promise<Object>} 更新后的配置
    */
   async updateConfig(newConfig) {
     if (!this.currentConfig) {
       await this.init();
     }
     
-    // Deep merge existing config with new values
+    // 深度合并现有配置与新值
     this.currentConfig = this._deepMerge(this.currentConfig, newConfig);
     
-    // Save to storage
-    await this.storage.set('config', this.currentConfig);
+    // 保存到存储
+    await this.storage.saveData('config', this.currentConfig);
     
     return { ...this.currentConfig };
   }
 
   /**
-   * Reset configuration to defaults
-   * @returns {Promise<Object>} Default configuration
+   * 重置配置为默认值
+   * @returns {Promise<Object>} 默认配置
    */
   async resetConfig() {
     this.currentConfig = { ...DEFAULT_CONFIG };
-    await this.storage.set('config', this.currentConfig);
+    await this.storage.saveData('config', this.currentConfig);
     return this.currentConfig;
   }
 
   /**
-   * Get a specific section of the configuration
-   * @param {string} section - Section name (e.g., 'llm', 'summarization')
-   * @returns {Object} The requested configuration section
+   * 获取配置的特定部分
+   * @param {string} section - 部分名称 (例如 'llm', 'summarization')
+   * @returns {Object} 请求的配置部分
    */
   getSection(section) {
     if (!this.currentConfig) {
@@ -125,9 +145,47 @@ class Config {
   }
 
   /**
-   * Merge saved config with defaults to ensure all required fields exist
-   * @param {Object} savedConfig - Configuration from storage
-   * @returns {Object} Merged configuration
+   * 获取当前启用的AI模型
+   * @returns {Object|null} 已启用的AI模型配置，如果没有则返回null
+   */
+  getEnabledAiModel() {
+    if (!this.currentConfig || !this.currentConfig.aiModels || !Array.isArray(this.currentConfig.aiModels) || this.currentConfig.aiModels.length === 0) {
+      return null;
+    }
+    
+    const models = this.currentConfig.aiModels;
+    const selectedModelName = this.currentConfig.selectedAiModel;
+
+    // 1. 优先处理用户选择的模型 (假设 selectedAiModel 存储的是模型名称)
+    if (selectedModelName) {
+      const userSelectedModel = models.find(model => model.name === selectedModelName);
+      if (userSelectedModel && userSelectedModel.active && userSelectedModel.apiKey) {
+        return {
+          provider: userSelectedModel.name, // 使用模型名称作为 provider
+          ...userSelectedModel
+        };
+      }
+      // 如果用户选择的模型无效 (例如, apiKey 未设置或模型非 active),
+      // 程序会继续尝试查找下一个可用的模型。
+    }
+
+    // 2. 如果没有选择模型，或者选择的模型不可用，则查找第一个 active 且有 apiKey 的模型
+    for (const model of models) {
+      if (model.active && model.apiKey) {
+        return {
+          provider: model.name, // 使用模型名称作为 provider
+          ...model
+        };
+      }
+    }
+    
+    return null; // 没有找到符合条件的模型
+  }
+
+  /**
+   * 将保存的配置与默认值合并，确保所有必需字段存在
+   * @param {Object} savedConfig - 存储中的配置
+   * @returns {Object} 合并后的配置
    * @private
    */
   _mergeWithDefaults(savedConfig) {
@@ -135,10 +193,10 @@ class Config {
   }
 
   /**
-   * Deep merge two objects
-   * @param {Object} target - Target object
-   * @param {Object} source - Source object to merge in
-   * @returns {Object} Merged object
+   * 深度合并两个对象
+   * @param {Object} target - 目标对象
+   * @param {Object} source - 要合并的源对象
+   * @returns {Object} 合并后的对象
    * @private
    */
   _deepMerge(target, source) {
@@ -162,4 +220,7 @@ class Config {
   }
 }
 
-export default new Config(); 
+// 导出单例实例
+const configInstance = new Config();
+export default configInstance;
+export { DEFAULT_CONFIG }; 

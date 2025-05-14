@@ -56,9 +56,10 @@ class FloatingButton {
     this.counterBadge.className = 'rs-counter-badge';
     this.counterBadge.style.display = 'none';
     button.appendChild(this.counterBadge);
-    
+    console.log("按钮元素创建了")
     // Add click event
     button.addEventListener('click', () => {
+      console.log("floating button is clicked")
       if (this.onClickCallback) {
         this.onClickCallback();
       }

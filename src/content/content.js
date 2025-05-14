@@ -9,7 +9,7 @@
 import ConfigManager from './core/ConfigManager';
 import MessageHandler from './core/MessageHandler';
 import PlatformAdapter from './platforms/base/PlatformAdapter';
-import GoogleScholarAdapter from './platforms/implementations/GoogleScholarAdapter';
+import GoogleScholarAdapter from './platforms/search/GoogleScholarAdapter';
 import UIManager from './ui/UIManager';
 /**
  * Main class for content script
@@ -38,19 +38,16 @@ class ContentScript {
         console.log(`Platform detected: ${this.adapter.getPlatformName()}`);
         
         await this.adapter.initialize();
-        this.uiManager = new UIManager();
-        await this.uiManager.initialize(this.adapter);
         this.messageHandler = new MessageHandler(this.adapter, this.adapter.uiManager);
         this.messageHandler.initialize();
         
         this.setupObserver();
         
-        // Show the floating button when adapter exists
-        if (this.uiManager && this.uiManager.floatingButton) {
-          this.uiManager.floatingButton.show();
-        }else{
+        if (this.adapter.uiManager && this.adapter.uiManager.floatingButton) {
+          this.adapter.uiManager.floatingButton.show();
+        } else {
           console.warn('Cannot show floating button: element is null');
-          console.warn(this.uiManager);
+          console.warn(this.adapter.uiManager);
         }
         
         console.log('Research Summarizer content script initialized');

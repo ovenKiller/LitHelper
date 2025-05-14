@@ -37,6 +37,40 @@ let config = {
   }
 };
 
+// 当扩展安装或更新时初始化
+chrome.runtime.onInstalled.addListener((details) => {
+  // 加载配置
+  loadConfig().then(() => {
+    console.log('配置已加载，扩展已初始化');
+  });
+  
+  // 创建右键菜单
+  createContextMenu();
+});
+
+// 创建右键菜单项
+function createContextMenu() {
+  // 移除任何现有的菜单项，以避免重复
+  chrome.contextMenus.removeAll(() => {
+    // 创建打开设置页面的菜单项
+    chrome.contextMenus.create({
+      id: 'open-settings',
+      title: '打开设置页面',
+      contexts: ['action'] // 仅在扩展图标上显示
+    });
+    
+    console.log('右键菜单已创建');
+  });
+}
+
+// 处理右键菜单点击事件
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === 'open-settings') {
+    // 打开设置页面
+    chrome.runtime.openOptionsPage();
+  }
+});
+
 // 加载存储的配置
 async function loadConfig() {
   try {
@@ -124,6 +158,11 @@ async function handleAction(message, sender) {
       // 在实际实现中会处理打开弹出窗口并跳转到特定标签
       return { success: true };
       
+    case 'openSettings':
+      // 打开设置页面
+      chrome.runtime.openOptionsPage();
+      return { success: true };
+      
     default:
       throw new Error(`未知操作: ${action}`);
   }
@@ -198,27 +237,27 @@ async function summarizePaper(paper, options) {
       categories: summary.categories
     };
   } catch (error) {
-    console.error('摘要论文失败:', error);
+    console.error('论文摘要生成失败:', error);
     return {
       success: false,
-      error: error.message || '摘要生成失败'
+      error: error.message || '论文摘要生成失败'
     };
   }
 }
 
-// 批量摘要论文 - 模拟实现
+// 批量摘要多篇论文 - 模拟实现
 async function batchSummarizePapers(papers, options) {
-  console.log('开始批量摘要', papers.length, '篇论文');
+  console.log('开始批量摘要论文:', papers.length, '篇');
   
   try {
     const results = [];
     
-    // 为每篇论文生成摘要
     for (const paper of papers) {
       const result = await summarizePaper(paper, options);
       if (result.success) {
         results.push({
-          paper,
+          paperId: paper.id,
+          title: paper.title,
           summary: result.summary,
           categories: result.categories
         });
@@ -238,68 +277,57 @@ async function batchSummarizePapers(papers, options) {
   }
 }
 
-// 下载PDF - 模拟实现
+// 下载单篇论文 - 模拟实现
 async function downloadPDF(paper) {
-  console.log('尝试下载PDF:', paper.title);
+  console.log('开始下载论文:', paper.title);
   
   try {
-    // 存储论文以供后续参考
-    storedData.papers[paper.id] = paper;
-    
-    // 获取PDF URL
-    const pdfUrl = paper.pdfUrl || await findPDFUrl(paper);
+    // 在实际实现中，会找到PDF URL并下载
+    const pdfUrl = await findPDFUrl(paper);
     
     if (!pdfUrl) {
-      return {
-        success: false,
-        error: '找不到PDF链接'
-      };
+      throw new Error('未找到PDF链接');
     }
+    
+    // 模拟下载过程
+    await new Promise(resolve => setTimeout(resolve, 1000));
     
     // 记录下载
     storedData.downloads[paper.id] = {
       paperId: paper.id,
-      pdfUrl,
-      downloadedAt: new Date().toISOString()
+      title: paper.title,
+      downloadedAt: new Date().toISOString(),
+      url: pdfUrl
     };
-    
-    // 使用Chrome下载API下载PDF
-    const downloadId = await chrome.downloads.download({
-      url: pdfUrl,
-      filename: `${paper.title.replace(/[\\/:*?"<>|]/g, '_')}.pdf`,
-      saveAs: false
-    });
     
     return {
       success: true,
-      downloadId
+      message: `已下载论文 "${paper.title}"`
     };
   } catch (error) {
-    console.error('下载PDF失败:', error);
+    console.error('下载论文失败:', error);
     return {
       success: false,
-      error: error.message || '下载PDF失败'
+      error: error.message || '下载论文失败'
     };
   }
 }
 
-// 批量下载PDF - 模拟实现
+// 批量下载多篇论文 - 模拟实现
 async function batchDownloadPapers(papers) {
-  console.log('开始批量下载', papers.length, '篇论文的PDF');
+  console.log('开始批量下载论文:', papers.length, '篇');
   
   try {
     const results = [];
     
-    // 为每篇论文下载PDF
     for (const paper of papers) {
-      if (paper.pdfUrl) {
-        const result = await downloadPDF(paper);
-        results.push({
-          paper,
-          success: result.success,
-          error: result.error
-        });
-      }
+      const result = await downloadPDF(paper);
+      results.push({
+        paperId: paper.id,
+        title: paper.title,
+        success: result.success,
+        message: result.success ? result.message : result.error
+      });
     }
     
     return {
@@ -315,48 +343,31 @@ async function batchDownloadPapers(papers) {
   }
 }
 
-// 查找PDF URL的辅助函数 - 模拟实现
+// 模拟查找PDF URL
 async function findPDFUrl(paper) {
-  // 在实际实现中，这将尝试从论文页面或其他来源查找PDF URL
-  return paper.pdfUrl || null;
+  // 模拟,实际会从paper.url访问页面解析获取PDF链接
+  return `https://example.com/papers/${paper.id}.pdf`;
 }
 
-// 获取网页内容 - 解决CORS问题
+// 获取页面内容 - 模拟实现
 async function fetchPageContent(url) {
-  console.log('获取网页内容:', url);
+  console.log('获取页面内容:', url);
   
   try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`HTTP错误: ${response.status}`);
-    }
+    // 在实际实现中,会向url发送请求并解析内容
+    await new Promise(resolve => setTimeout(resolve, 1000));
     
-    const htmlContent = await response.text();
     return {
       success: true,
-      data: htmlContent
+      content: '模拟页面内容'
     };
   } catch (error) {
-    console.error('获取网页内容失败:', error);
+    console.error('获取页面内容失败:', error);
     return {
       success: false,
-      error: error.message || '获取网页内容失败'
+      error: error.message || '获取页面内容失败'
     };
   }
 }
-
-// 当扩展安装或更新时
-chrome.runtime.onInstalled.addListener(async (details) => {
-  console.log('扩展已安装/更新:', details.reason);
-  
-  // 加载配置
-  await loadConfig();
-  
-  // 第一次安装时显示欢迎页面或设置
-  if (details.reason === 'install') {
-    // chrome.tabs.create({ url: 'public/welcome.html' });
-    console.log('扩展首次安装，可以在这里显示欢迎页面');
-  }
-});
 
 console.log('Research Summarizer 后台服务已启动'); 

@@ -1,174 +1,130 @@
 /**
  * storage.js
  * 
- * Utility for interacting with Chrome's storage API
+ * 提供数据持久化存储服务
  */
 
-/**
- * Extension storage utility class implemented as singleton
- */
-class ExtensionStorage {
-  static instance = null;
-
+export class StorageService {
   /**
-   * Private constructor to enforce singleton pattern
+   * 保存数据到存储
+   * @param {string} key 存储键
+   * @param {any} data 要存储的数据
    */
-  constructor() {
-    if (ExtensionStorage.instance) {
-      throw new Error('ExtensionStorage is a singleton. Use ExtensionStorage.getInstance()');
+  async saveData(key, data) {
+    try {
+      const saveObj = {};
+      saveObj[key] = data;
+      await chrome.storage.local.set(saveObj);
+      return true;
+    } catch (error) {
+      console.error(`保存数据失败[${key}]:`, error);
+      return false;
     }
-    ExtensionStorage.instance = this;
   }
 
   /**
-   * Get the singleton instance
-   * @returns {ExtensionStorage}
+   * 获取存储的数据
+   * @param {string} key 存储键
+   * @returns {Promise<any>} 存储的数据
    */
-  static getInstance() {
-    if (!ExtensionStorage.instance) {
-      ExtensionStorage.instance = new ExtensionStorage();
+  async get(key) {
+    try {
+      const result = await chrome.storage.local.get(key);
+      return result[key];
+    } catch (error) {
+      console.error(`获取数据失败[${key}]:`, error);
+      return null;
     }
-    return ExtensionStorage.instance;
   }
 
   /**
-   * Set data in storage
-   * @param {string} key - Storage key
-   * @param {any} value - Value to store
-   * @returns {Promise<void>}
+   * 删除存储的数据
+   * @param {string} key 存储键
    */
-  set(key, value) {
-    if (typeof key !== 'string') {
-      return Promise.reject(new Error('Storage key must be a string'));
+  async remove(key) {
+    try {
+      await chrome.storage.local.remove(key);
+      return true;
+    } catch (error) {
+      console.error(`删除数据失败[${key}]:`, error);
+      return false;
     }
+  }
 
-    return new Promise((resolve, reject) => {
-      const data = { [key]: value };
+  /**
+   * 保存论文数据
+   * @param {Object} paper 论文对象
+   */
+  async savePaper(paper) {
+    if (!paper || !paper.id) {
+      console.error('无效的论文数据');
+      return false;
+    }
+    return await this.save(`papers.${paper.id}`, paper);
+  }
+
+  /**
+   * 获取论文数据
+   * @param {string} paperId 论文ID
+   */
+  async getPaper(paperId) {
+    return await this.get(`papers.${paperId}`);
+  }
+
+  /**
+   * 保存论文摘要
+   * @param {Object} summary 摘要对象
+   */
+  async saveSummary(summary) {
+    if (!summary || !summary.paperId) {
+      console.error('无效的摘要数据');
+      return false;
+    }
+    return await this.save(`summaries.${summary.paperId}`, summary);
+  }
+
+  /**
+   * 获取论文摘要
+   * @param {string} paperId 论文ID
+   */
+  async getSummary(paperId) {
+    return await this.get(`summaries.${paperId}`);
+  }
+
+  /**
+   * 获取所有摘要
+   */
+  async getAllSummaries() {
+    try {
+      const allData = await chrome.storage.local.get(null);
+      const summaries = [];
       
-      chrome.storage.local.set(data, () => {
-        if (chrome.runtime.lastError) {
-          reject(chrome.runtime.lastError);
-        } else {
-          resolve();
+      for (const key in allData) {
+        if (key.startsWith('summaries.')) {
+          summaries.push(allData[key]);
         }
-      });
-    });
-  }
-
-  /**
-   * Get data from storage
-   * @param {string|null} key - Storage key (null to get all)
-   * @returns {Promise<any>} The retrieved data
-   */
-  get(key = null) {
-    if (key !== null && typeof key !== 'string') {
-      return Promise.reject(new Error('Storage key must be a string or null'));
-    }
-
-    return new Promise((resolve, reject) => {
-      if (key === null) {
-        // Get all data
-        chrome.storage.local.get(null, (items) => {
-          if (chrome.runtime.lastError) {
-            reject(chrome.runtime.lastError);
-          } else {
-            resolve(items);
-          }
-        });
-      } else {
-        // Get specific key
-        chrome.storage.local.get([key], (items) => {
-          if (chrome.runtime.lastError) {
-            reject(chrome.runtime.lastError);
-          } else {
-            resolve(items[key]);
-          }
-        });
       }
-    });
-  }
-
-  /**
-   * Remove data from storage
-   * @param {string} key - Storage key
-   * @returns {Promise<void>}
-   */
-  remove(key) {
-    return new Promise((resolve, reject) => {
-      chrome.storage.local.remove(key, () => {
-        if (chrome.runtime.lastError) {
-          reject(chrome.runtime.lastError);
-        } else {
-          resolve();
-        }
-      });
-    });
-  }
-
-  /**
-   * Clear all extension storage
-   * @returns {Promise<void>}
-   */
-  clear() {
-    return new Promise((resolve, reject) => {
-      chrome.storage.local.clear(() => {
-        if (chrome.runtime.lastError) {
-          reject(chrome.runtime.lastError);
-        } else {
-          resolve();
-        }
-      });
-    });
-  }
-
-  /**
-   * Check if a key exists in storage
-   * @param {string} key - Storage key
-   * @returns {Promise<boolean>} Whether the key exists
-   */
-  async has(key) {
-    const value = await this.get(key);
-    return value !== undefined;
-  }
-
-  /**
-   * Get the size of the storage in bytes
-   * @returns {Promise<number>} Size in bytes
-   */
-  getSize() {
-    return new Promise((resolve, reject) => {
-      chrome.storage.local.getBytesInUse(null, (bytesInUse) => {
-        if (chrome.runtime.lastError) {
-          reject(chrome.runtime.lastError);
-        } else {
-          resolve(bytesInUse);
-        }
-      });
-    });
-  }
-
-  /**
-   * Listen for changes to storage
-   * @param {Function} callback - Function to call when storage changes
-   * @returns {Function} Function to remove the listener
-   */
-  onChange(callback) {
-    if (typeof callback !== 'function') {
-      throw new Error('Callback must be a function');
+      
+      return summaries;
+    } catch (error) {
+      console.error('获取所有摘要失败:', error);
+      return [];
     }
-
-    const listener = (changes, areaName) => {
-      if (areaName === 'local') {
-        callback(changes);
-      }
-    };
-    
-    chrome.storage.onChanged.addListener(listener);
-    
-    // Return function to remove listener
-    return () => chrome.storage.onChanged.removeListener(listener);
   }
+
+  /**
+   * 记录论文下载
+   * @param {Object} downloadInfo 下载信息
+   */
+  async recordDownload(downloadInfo) {
+    if (!downloadInfo || !downloadInfo.paperId) {
+      console.error('无效的下载信息');
+      return false;
+    }
+    return await this.save(`downloads.${downloadInfo.paperId}`, downloadInfo);
+  }
+
 }
 
-// Export singleton instance
-export const storage = ExtensionStorage.getInstance(); 
+// 创建并导出单例实例，兼容旧代码
+export const storage = new StorageService(); 

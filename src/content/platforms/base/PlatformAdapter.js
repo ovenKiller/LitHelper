@@ -10,7 +10,7 @@ import SummaryContainer from '../../ui/components/SummaryContainer';
 
 class PlatformAdapter {
   constructor() {
-    this.uiManager = new UIManager();
+    this.uiManager = null;
   }
 
   /**
@@ -21,7 +21,9 @@ class PlatformAdapter {
     if (!this.isPageSupported()) {
       throw new Error('Page not supported');
     }
-
+    console.log("platform adapter初始化")
+    // 在initialize方法中创建UIManager
+    this.uiManager = new UIManager();
     await this.uiManager.initialize(this);
     await this.injectUI();
   }
@@ -81,35 +83,7 @@ class PlatformAdapter {
    * @returns {Promise<void>}
    */
   async injectUI() {
-    try {
-      // Get papers from the current page
-      const papers = await this.extractPapers();
-      
-      // For each paper, create and inject UI components
-      for (const paper of papers) {
-        if (!paper.element) continue;
-        
-        // Create paper controls
-        const controls = new PaperControls(paper.id, paper.element);
-        await controls.initialize({
-          hasPdf: !!paper.pdfUrl,
-          onSummarize: (paperId) => this.uiManager.handleSummarizeClick(paperId, this),
-          onDownload: (paperId) => this.uiManager.handleDownloadClick(paperId, this)
-        });
-        
-        // Create summary container
-        const summaryContainer = new SummaryContainer(paper.id, paper.element);
-        await summaryContainer.initialize();
-        
-        // Register components with UI manager
-        this.uiManager.registerComponent(paper.id, summaryContainer);
-      }
-      
-      return true;
-    } catch (error) {
-      console.error('Failed to inject UI:', error);
-      return false;
-    }
+    
   }
   /*
   搜索结果中的所有论文数量
@@ -129,7 +103,9 @@ class PlatformAdapter {
    * @returns {Promise<void>}
    */
   async removeInjectedUI() {
-    this.uiManager.removeAllComponents();
+    if (this.uiManager) {
+      this.uiManager.removeAllComponents();
+    }
   }
 
   /**
@@ -165,6 +141,8 @@ class PlatformAdapter {
    * @returns {Promise<void>}
    */
   async handlePageChange() {
+    if (!this.uiManager) return;
+
     // 保存当前悬浮按钮的状态
     const floatingButtonVisible = this.uiManager.floatingButton && 
       this.uiManager.floatingButton.element && 

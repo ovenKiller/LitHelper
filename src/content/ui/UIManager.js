@@ -9,13 +9,13 @@ import PopupWindow from './components/PopupWindow';
 import PaperControls from './components/PaperControls';
 import SummaryContainer from './components/SummaryContainer';
 import { storage } from '../../utils/storage';
+
 class UIManager {
   constructor() {
     this.components = new Map();
     this.floatingButton = null;
     this.popupWindow = null;
-    this.selectedPapers = new Set();
-    this.papers = null;  // Changed from Map() to new Map()
+    this.papers = new Map();
     this.storage = storage;
   }
 
@@ -25,33 +25,56 @@ class UIManager {
    * @returns {Promise<void>}
    */
   async initialize(platform) {
-    // Initialize popup window first
+    try {
+      console.log("UI manager对象初始化")
+      // 初始化存储
+      const savedData = await this.storage.get('savedPapers') || {};
+      this.papers = new Map(Object.entries(savedData));
+
+      // 初始化弹出窗口
+      await this.initializePopupWindow();
+
+      // 初始化平台特定组件
+      await this.initializePlatformComponents(platform);
+
+      // 初始化悬浮按钮
+      await this.initializeFloatingButton();
+
+      // 更新悬浮按钮的论文数量
+      if (this.floatingButton) {
+        this.floatingButton.setPaperCount(this.papers.size);
+      }
+    } catch (error) {
+      console.error('Failed to initialize UI:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Initialize popup window
+   * @param {Object} platform - Platform adapter instance
+   * @returns {Promise<void>}
+   */
+  async initializePopupWindow() {
     this.popupWindow = new PopupWindow();
     await this.popupWindow.initialize({
       title: 'Research Summarizer',
       query: this.getCurrentQuery(),
       onClose: () => this.hidePopup(),
-      onSummarizeAll: () => this.handleSummarizeAll(platform),
-      onDownloadAll: () => this.handleDownloadAll(platform),
-      onCompare: () => this.handleCompare(platform),
       onRemovePaper: (paperId) => this.handleRemovePaper(paperId)
     });
+  }
 
-    // 给平台（例如Google Scholar）添加一个回调，当平台发现一个paper时，会调用这个回调
-    await platform.initialize((paper) => this.handleAddPaper(paper));
-    
-    // Initialize platform-specific UI components
-    await this.initializePlatformComponents(platform);
-    
-    // Initialize floating button
+  /**
+   * Initialize floating button
+   * @param {Object} platform - Platform adapter instance
+   * @returns {Promise<void>}
+   */
+  async initializeFloatingButton() {
+    console.log("悬浮按钮元素创建")
     this.floatingButton = new FloatingButton();
-    await this.floatingButton.initialize(() => this.togglePopup(platform));
-    
-    // 确保悬浮按钮可见
+    await this.floatingButton.initialize(() => this.togglePopup());
     this.floatingButton.show();
-    const savedData = await this.storage.get('savedPapers') || {};
-    this.papers = new Map(Object.entries(savedData));
-    this.floatingButton.setPaperCount(this.papers.size);
   }
 
   /**
@@ -93,7 +116,7 @@ class UIManager {
    * @param {Object} platform - Platform adapter instance
    * @returns {Promise<void>}
    */
-  async initializePlatformComponents(platform) {
+  async initializePlatformComponents() {
     // This will be implemented by platform-specific adapters
   }
 
@@ -108,21 +131,20 @@ class UIManager {
 
   /**
    * Toggle the popup window
-   * @param {Object} platform - Platform adapter instance
    */
-  togglePopup(platform) {
+  togglePopup() {
+    console.log("popup toggled")
     if (this.popupWindow.isVisible) {
       this.hidePopup();
     } else {
-      this.showPopup(platform);
+      this.showPopup();
     }
   }
 
   /**
    * Show the popup window 显示弹窗
-   * @param {Object} platform - Platform adapter instance
    */
-  async showPopup(platform) {
+  async showPopup() {
     if (!this.popupWindow) return;
     
     // Get papers from the platform
@@ -587,6 +609,7 @@ class UIManager {
    * Remove all UI components
    */
   removeAllComponents() {
+    console.log("all component removed")
     this.components.clear();
     
     if (this.floatingButton) {
