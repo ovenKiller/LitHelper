@@ -9,7 +9,7 @@ module.exports = {
     background: './src/background/background.js',
     content: './src/content/content.js',
     popup: './src/popup/popup.js', // Add this if you have a popup.js file
-    settings: './src/config/settings.js', // 添加配置设置页面的入口
+    settings: './src/option/SettingsController.js', // 配置设置页面的入口（已重命名为MVC架构中的Controller）
   },
   output: {
     path: path.resolve(__dirname, 'dist'),
@@ -47,16 +47,17 @@ module.exports = {
         { from: 'manifest.json', to: './' },
         { from: 'src/assets/icons', to: './icons' },
         { from: 'src/content/ui/styles', to: './content/ui/styles' },
-        { from: 'src/content/ui/icons', to: './icons' }
+        { from: 'src/content/ui/icons', to: './icons' },
+        { from: 'src/option/settings.css', to: './' }
       ]
     }),
     new HtmlWebpackPlugin({
-      template: './src/pages/popup.html',
+      template: './src/popup/popup.html',
       filename: 'popup.html',
       chunks: ['popup']
     }),
     new HtmlWebpackPlugin({
-      template: './src/config/settings.html',
+      template: './src/option/settings.html',
       filename: 'settings.html',
       chunks: ['settings'],
       inject: 'body'

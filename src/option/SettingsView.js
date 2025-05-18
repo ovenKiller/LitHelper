@@ -1,7 +1,7 @@
 /**
- * ModelView.js
+ * SettingsView.js (原 view.js)
  * 
- * 负责模型设置的UI渲染和组件创建
+ * 视图(View)层：负责模型设置的UI渲染和组件创建
  */
 
 class ModelView {
@@ -179,32 +179,10 @@ class ModelView {
     input.type = type;
     input.setAttribute('data-index', index);
     input.setAttribute('data-field', fieldName);
+    input.value = value; // 直接设置值，无需特殊处理
     
-    // 如果是密码字段且有值，显示掩码
-    if (type === 'password' && value) {
-      input.value = '••••••••••••';
-      input.setAttribute('data-has-value', 'true');
-    } else {
-      input.value = value;
-    }
-    
-    input.addEventListener('focus', () => {
-      // 密码字段获取焦点时，如果有掩码，清空以便用户输入
-      if (type === 'password' && input.getAttribute('data-has-value') === 'true') {
-        input.value = '';
-      }
-    });
-    
-    input.addEventListener('blur', (e) => {
-      // 保存值变化
-      if (type === 'password') {
-        // 对于密码字段，只有当输入了内容时才更新
-        if (input.value && input.value !== '••••••••••••') {
-          onChange(index, fieldName, input.value);
-          input.value = '••••••••••••';
-          input.setAttribute('data-has-value', 'true');
-        }
-      } else if (type === 'number') {
+    input.addEventListener('change', (e) => {
+      if (type === 'number') {
         onChange(index, fieldName, parseInt(input.value, 10));
       } else {
         onChange(index, fieldName, input.value);
@@ -255,7 +233,7 @@ class ModelView {
   }
   
   /**
-   * 创建温度字段
+   * 创建温度设置字段
    * @private
    */
   createTemperatureField(model, index, onChange) {
@@ -263,7 +241,7 @@ class ModelView {
     field.className = 'model-field';
     
     const labelElement = document.createElement('label');
-    labelElement.textContent = '温度';
+    labelElement.textContent = '响应温度';
     
     const sliderContainer = document.createElement('div');
     sliderContainer.className = 'slider-container';
@@ -277,18 +255,20 @@ class ModelView {
     slider.setAttribute('data-index', index);
     slider.setAttribute('data-field', 'temperature');
     
-    const valueDisplay = document.createElement('span');
-    valueDisplay.className = 'slider-value';
-    valueDisplay.textContent = model.temperature || 0.7;
+    const sliderValue = document.createElement('span');
+    sliderValue.className = 'slider-value';
+    sliderValue.textContent = slider.value;
     
     slider.addEventListener('input', (e) => {
-      const value = parseFloat(e.target.value);
-      valueDisplay.textContent = value;
-      onChange(index, 'temperature', value);
+      sliderValue.textContent = e.target.value;
+    });
+    
+    slider.addEventListener('change', (e) => {
+      onChange(index, 'temperature', parseFloat(e.target.value));
     });
     
     sliderContainer.appendChild(slider);
-    sliderContainer.appendChild(valueDisplay);
+    sliderContainer.appendChild(sliderValue);
     
     field.appendChild(labelElement);
     field.appendChild(sliderContainer);
@@ -298,145 +278,132 @@ class ModelView {
   
   /**
    * 创建测试连接字段
+   * @param {number} index - 模型索引
+   * @param {Function} onTestConnection - 测试连接回调函数
    * @private
    */
   createTestConnectionField(index, onTestConnection) {
     const field = document.createElement('div');
-    field.className = 'model-field';
-    field.style.marginTop = '16px';
+    field.className = 'test-connection-field';
     
-    const testButton = document.createElement('button');
-    testButton.className = 'btn test-connection-btn';
-    testButton.style.width = '100%';
-    testButton.textContent = '测试连接';
-    testButton.setAttribute('data-index', index);
+    const testBtn = document.createElement('button');
+    testBtn.className = 'test-btn';
+    testBtn.textContent = '测试连接';
+    testBtn.setAttribute('data-index', index);
     
-    const testResultDiv = document.createElement('div');
-    testResultDiv.className = 'test-result';
-    testResultDiv.style.display = 'none';
+    const statusElement = document.createElement('div');
+    statusElement.className = 'test-status';
+    statusElement.textContent = '';
     
-    testButton.addEventListener('click', async (e) => {
-      const btn = e.target;
-      const originalText = btn.textContent;
-      
-      // 禁用按钮并显示加载状态
-      btn.disabled = true;
-      btn.textContent = '测试中...';
-      
-      // 清除之前的测试结果
-      testResultDiv.style.display = 'none';
-      testResultDiv.className = 'test-result';
+    // 创建 loading 指示器
+    const loader = document.createElement('div');
+    loader.className = 'loader';
+    loader.style.display = 'none';
+    
+    for (let i = 0; i < 3; i++) {
+      const dot = document.createElement('div');
+      dot.className = 'loader-dot';
+      loader.appendChild(dot);
+    }
+    
+    testBtn.addEventListener('click', async () => {
+      // 更新 UI 状态为加载中
+      statusElement.textContent = '';
+      statusElement.className = 'test-status';
+      testBtn.disabled = true;
+      loader.style.display = 'flex';
       
       try {
-        // 调用测试方法
+        // 调用测试连接函数
         const result = await onTestConnection(index);
         
-        // 显示测试结果
-        testResultDiv.style.display = 'block';
-        
+        // 更新 UI 显示测试结果
         if (result.success) {
-          testResultDiv.className = 'test-result success';
-          testResultDiv.textContent = result.message;
-          if (result.data) {
-            testResultDiv.textContent += ` 响应: "${result.data}"`;
-          }
+          this.showStatus(statusElement, 'success', '连接成功');
         } else {
-          testResultDiv.className = 'test-result error';
-          testResultDiv.textContent = result.message;
+          this.showStatus(statusElement, 'error', result.error || '连接失败');
         }
       } catch (error) {
-        // 显示错误
-        testResultDiv.style.display = 'block';
-        testResultDiv.className = 'test-result error';
-        testResultDiv.textContent = `测试失败: ${error.message}`;
+        // 显示错误信息
+        this.showStatus(statusElement, 'error', error.message || '测试时发生错误');
+        console.error('测试连接失败:', error);
       } finally {
-        // 恢复按钮状态
-        btn.disabled = false;
-        btn.textContent = originalText;
+        // 恢复 UI 状态
+        testBtn.disabled = false;
+        loader.style.display = 'none';
       }
     });
     
-    field.appendChild(testButton);
-    field.appendChild(testResultDiv);
+    field.appendChild(testBtn);
+    field.appendChild(loader);
+    field.appendChild(statusElement);
     
     return field;
   }
   
   /**
    * 创建模型选择器
-   * @param {Array} models - 模型数组
-   * @param {string} selectedModel - 当前选中的模型
+   * @param {Array|string} models - 可用模型列表或单个模型名称
+   * @param {string} selectedModel - 当前选择的模型
    * @param {Function} onChange - 变更处理函数
    * @returns {HTMLElement} - 选择器元素
    */
   createModelSelector(models, selectedModel, onChange) {
     const select = document.createElement('select');
-    select.id = 'default-ai-model';
     
-    // 添加默认选项
-    const defaultOption = document.createElement('option');
-    defaultOption.value = '';
-    defaultOption.textContent = '-- 请选择默认 AI 模型 --';
-    select.appendChild(defaultOption);
+    const modelsArray = Array.isArray(models) ? models : [models];
     
-    // 添加启用且有API密钥的模型
-    models.forEach(model => {
-      if (model.active && model.apiKey) {
-        const option = document.createElement('option');
-        option.value = model.name;
-        option.textContent = model.name;
-        select.appendChild(option);
+    modelsArray.forEach(modelName => {
+      const option = document.createElement('option');
+      option.value = modelName;
+      option.textContent = modelName;
+      if (selectedModel === modelName) {
+        option.selected = true;
       }
+      select.appendChild(option);
     });
     
-    // 设置默认选中项
-    if (selectedModel) {
-      select.value = selectedModel;
+    if (onChange) {
+      select.addEventListener('change', (e) => {
+        onChange(e.target.value);
+      });
     }
-    
-    // 添加变更事件
-    select.addEventListener('change', (e) => {
-      onChange(e.target.value);
-    });
     
     return select;
   }
   
   /**
-   * 更新测试结果显示
+   * 更新测试结果
    * @param {HTMLElement} card - 模型卡片元素
    * @param {Object} result - 测试结果
    */
   updateTestResult(card, result) {
-    const testResultDiv = card.querySelector('.test-result');
+    const statusElement = card.querySelector('.test-status');
     
-    if (!testResultDiv) return;
+    if (!statusElement) return;
     
-    testResultDiv.style.display = 'block';
-    testResultDiv.className = 'test-result ' + (result.success ? 'success' : 'error');
-    testResultDiv.textContent = result.message;
-    
-    if (result.success && result.data) {
-      testResultDiv.textContent += ` 响应: "${result.data}"`;
+    if (result.success) {
+      this.showStatus(statusElement, 'success', '连接成功');
+    } else {
+      this.showStatus(statusElement, 'error', result.error || '连接失败');
     }
   }
   
   /**
    * 显示状态信息
    * @param {HTMLElement} statusElement - 状态元素
-   * @param {string} type - 消息类型（success/error）
-   * @param {string} message - 消息内容
+   * @param {string} type - 状态类型 ('success' 或 'error')
+   * @param {string} message - 状态消息
    */
   showStatus(statusElement, type, message) {
-    statusElement.className = `status ${type}`;
     statusElement.textContent = message;
-    statusElement.style.display = 'block';
+    statusElement.className = `test-status ${type}`;
     
-    // 5秒后自动隐藏
+    // 设置动画效果 (可选)
+    statusElement.style.animation = 'none';
     setTimeout(() => {
-      statusElement.className = 'status';
-      statusElement.style.display = 'none';
-    }, 5000);
+      statusElement.style.animation = 'fadeIn 0.3s';
+    }, 10);
   }
 }
 

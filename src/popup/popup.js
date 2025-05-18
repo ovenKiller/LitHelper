@@ -4,7 +4,7 @@
  * JavaScript for the extension popup UI
  */
 
-import Config from '../config/config';
+import Config from '../option/SettingsModel';
 import { storage } from '../utils/storage';
 
 // Initialize popup controller

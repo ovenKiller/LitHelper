@@ -1,7 +1,7 @@
 /**
- * config.js
+ * SettingsModel.js (原 config.js)
  * 
- * 统一的配置管理模块，负责存储和管理扩展的所有设置
+ * 模型(Model)层：统一的配置管理模块，负责存储和管理扩展的所有设置
  */
 
 import { storage } from '../utils/storage';

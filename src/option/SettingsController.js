@@ -1,12 +1,12 @@
 /**
- * settings.js
+ * SettingsController.js (原 settings.js)
  * 
- * 设置页面的交互逻辑
+ * 控制器(Controller)层：设置页面的交互逻辑
  */
 
-import Config from './config';
-import llmServiceInstance from '../services/llmService';
-import ModelView from './ModelView';
+import Config from './SettingsModel';
+import aiServiceInstance from '../api/aiService';
+import ModelView from './SettingsView';
 
 class SettingsController {
   constructor() {
@@ -249,24 +249,13 @@ class SettingsController {
    */
   async saveSettings() {
     try {
-      // 收集摘要设置的更改
+      // 收集摘要设置
       this.collectSummarizationSettings();
-      
-      // 收集全局默认模型设置
-      if (this.defaultModelSelect.value) {
-        this.currentConfig.selectedAiModel = this.defaultModelSelect.value;
-      } else {
-        this.currentConfig.selectedAiModel = null;
-      }
       
       // 保存配置
       await this.config.updateConfig(this.currentConfig);
       
-      // 显示成功消息
-      this.showStatus(true, '设置已成功保存！');
-      
-      // 重新加载UI以确保一致性
-      this.loadConfigToUI();
+      this.showStatus(true, '设置已保存');
     } catch (error) {
       console.error('保存设置失败:', error);
       this.showStatus(false, '保存设置失败：' + error.message);
@@ -274,13 +263,13 @@ class SettingsController {
   }
   
   /**
-   * 收集摘要设置的更改
+   * 收集摘要设置
    */
   collectSummarizationSettings() {
+    this.currentConfig.summarization = this.currentConfig.summarization || {};
+    
     // 收集最大处理文献数
-    if (this.maxPapersInput.value) {
-      this.currentConfig.summarization.maxPapersPerBatch = parseInt(this.maxPapersInput.value, 10);
-    }
+    this.currentConfig.summarization.maxPapersPerBatch = parseInt(this.maxPapersInput.value, 10);
     
     // 收集内容包含选项
     this.currentConfig.summarization.includeAbstract = this.includeAbstractCheck.checked;
@@ -288,27 +277,26 @@ class SettingsController {
   }
   
   /**
-   * 确认是否重置设置
+   * 确认重置设置
    */
   confirmResetSettings() {
-    if (confirm('确定要将所有设置恢复为默认值吗？此操作不可撤销。')) {
+    if (confirm('确认要将所有设置重置为默认值吗？此操作不可撤销。')) {
       this.resetSettings();
     }
   }
   
   /**
-   * 重置所有设置为默认值
+   * 重置所有设置
    */
   async resetSettings() {
     try {
-      // 调用配置类的重置方法
+      // 重置配置
       this.currentConfig = await this.config.resetConfig();
       
       // 重新加载UI
       this.loadConfigToUI();
       
-      // 显示成功消息
-      this.showStatus(true, '所有设置已恢复为默认值！');
+      this.showStatus(true, '设置已重置为默认值');
     } catch (error) {
       console.error('重置设置失败:', error);
       this.showStatus(false, '重置设置失败：' + error.message);
@@ -316,34 +304,43 @@ class SettingsController {
   }
   
   /**
-   * 显示状态消息
+   * 显示状态信息
    * @param {boolean} success - 是否成功
    * @param {string} message - 消息内容
    */
   showStatus(success, message) {
-    this.modelView.showStatus(
-      this.statusMessage, 
-      success ? 'success' : 'error', 
-      message
-    );
+    this.statusMessage.textContent = message;
+    this.statusMessage.className = success ? 'status success' : 'status error';
+    this.statusMessage.style.display = 'block';
+    
+    // 自动隐藏
+    setTimeout(() => {
+      this.statusMessage.style.display = 'none';
+    }, 3000);
   }
   
   /**
-   * 打开添加自定义模型的模态框
+   * 打开添加模型模态框
    */
   openAddModelModal() {
     // 重置表单
     this.resetModelForm();
     
     // 显示模态框
-    this.customModelModal.classList.add('active');
+    this.customModelModal.style.display = 'flex';
+    setTimeout(() => {
+      this.customModelModal.classList.add('active');
+    }, 10);
   }
   
   /**
-   * 关闭添加自定义模型的模态框
+   * 关闭添加模型模态框
    */
   closeAddModelModal() {
     this.customModelModal.classList.remove('active');
+    setTimeout(() => {
+      this.customModelModal.style.display = 'none';
+    }, 300);
   }
   
   /**
@@ -354,11 +351,11 @@ class SettingsController {
     this.modelApiKeyInput.value = '';
     this.modelApiUrlInput.value = '';
     this.modelAvailableModelsInput.value = '';
-    this.modelDefaultModelSelect.innerHTML = '<option value="">-- 请先输入可用模型 --</option>';
+    this.modelDefaultModelSelect.innerHTML = '';
     this.modelMaxTokensInput.value = '2000';
     this.modelTemperatureInput.value = '0.7';
     this.temperatureValueSpan.textContent = '0.7';
-    this.modelActiveCheck.checked = true;
+    this.modelActiveCheck.checked = false;
   }
   
   /**
@@ -366,55 +363,74 @@ class SettingsController {
    */
   updateDefaultModelOptions() {
     // 获取可用模型列表
-    const modelsText = this.modelAvailableModelsInput.value;
-    const models = modelsText.split(/[,\n]/).map(m => m.trim()).filter(m => m);
+    const modelsInput = this.modelAvailableModelsInput.value;
+    const models = modelsInput.split(',').map(m => m.trim()).filter(m => m);
     
-    // 重置选择器
+    // 清空选择器
     this.modelDefaultModelSelect.innerHTML = '';
     
+    // 如果没有模型，添加提示选项
     if (models.length === 0) {
-      // 如果没有可用模型，显示提示
       const option = document.createElement('option');
       option.value = '';
-      option.textContent = '-- 请先输入可用模型 --';
+      option.textContent = '-- 请先添加可用模型 --';
+      option.disabled = true;
+      option.selected = true;
       this.modelDefaultModelSelect.appendChild(option);
-    } else {
-      // 添加所有可用模型作为选项
-      models.forEach(model => {
-        const option = document.createElement('option');
-        option.value = model;
-        option.textContent = model;
-        this.modelDefaultModelSelect.appendChild(option);
-      });
-      
-      // 默认选择第一个模型
-      this.modelDefaultModelSelect.value = models[0];
+      return;
     }
+    
+    // 添加每个模型的选项
+    models.forEach(modelName => {
+      const option = document.createElement('option');
+      option.value = modelName;
+      option.textContent = modelName;
+      this.modelDefaultModelSelect.appendChild(option);
+    });
+    
+    // 默认选择第一个
+    this.modelDefaultModelSelect.value = models[0];
   }
   
   /**
    * 更新默认模型选择器
    */
   updateDefaultModelSelector() {
-    // 获取所有启用且有API密钥的模型
-    const enabledModels = this.currentConfig.aiModels
-      ? this.currentConfig.aiModels.filter(model => model.active && model.apiKey)
-      : [];
+    // 清空选择器
+    this.defaultModelSelect.innerHTML = '';
     
-    // 创建并替换当前的选择器
-    const selector = this.modelView.createModelSelector(
-      enabledModels,
-      this.currentConfig.selectedAiModel,
-      (value) => {
-        // 更新默认模型
-        this.currentConfig.selectedAiModel = value;
+    // 获取所有激活的模型
+    const activeModels = this.currentConfig.aiModels.filter(model => model.active);
+    
+    // 如果没有激活模型，添加提示选项
+    if (activeModels.length === 0) {
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = '-- 请先启用至少一个AI模型 --';
+      option.disabled = true;
+      option.selected = true;
+      this.defaultModelSelect.appendChild(option);
+      return;
+    }
+    
+    // 添加每个激活模型的选项
+    activeModels.forEach(model => {
+      const option = document.createElement('option');
+      option.value = model.name;
+      option.textContent = model.name;
+      
+      // 如果当前选中的模型存在于激活模型中，则选中该选项
+      if (this.currentConfig.selectedAiModel === model.name) {
+        option.selected = true;
       }
-    );
+      
+      this.defaultModelSelect.appendChild(option);
+    });
     
-    // 替换现有选择器
-    if (this.defaultModelSelect.parentNode) {
-      this.defaultModelSelect.parentNode.replaceChild(selector, this.defaultModelSelect);
-      this.defaultModelSelect = selector;
+    // 如果当前选中的模型不存在于激活模型中，选择第一个激活模型
+    if (!activeModels.some(m => m.name === this.currentConfig.selectedAiModel)) {
+      this.defaultModelSelect.value = activeModels[0].name;
+      this.currentConfig.selectedAiModel = activeModels[0].name;
     }
   }
   
@@ -422,124 +438,119 @@ class SettingsController {
    * 添加自定义模型
    */
   addCustomModel() {
-    // 验证必填字段
-    if (!this.validateModelForm()) {
+    // 验证表单
+    const validationResult = this.validateModelForm();
+    if (!validationResult.valid) {
+      alert(validationResult.message);
       return;
     }
     
     // 获取表单数据
-    const modelName = this.modelNameInput.value.trim();
+    const name = this.modelNameInput.value.trim();
     const apiKey = this.modelApiKeyInput.value.trim();
-    const apiUrl = this.modelApiUrlInput.value.trim();
-    const modelsText = this.modelAvailableModelsInput.value;
-    const models = modelsText.split(/[,\n]/).map(m => m.trim()).filter(m => m);
+    const url = this.modelApiUrlInput.value.trim();
+    let models = this.modelAvailableModelsInput.value.trim().split(',').map(m => m.trim()).filter(m => m);
     const selectedModel = this.modelDefaultModelSelect.value;
     const maxTokens = parseInt(this.modelMaxTokensInput.value, 10);
     const temperature = parseFloat(this.modelTemperatureInput.value);
     const active = this.modelActiveCheck.checked;
     
-    // 创建新模型配置
+    // 创建模型配置
     const newModel = {
-      name: modelName,
-      apiKey: apiKey,
-      url: apiUrl,
-      models: models.length > 1 ? models : models[0],
-      selectedModel: selectedModel,
-      maxTokens: maxTokens,
-      temperature: temperature,
-      active: active,
+      name,
+      apiKey,
+      url,
+      models: models.length === 1 ? models[0] : models,
+      selectedModel,
+      maxTokens,
+      temperature,
+      active,
       isCustom: true
     };
     
-    // 添加到当前配置
-    if (!this.currentConfig.aiModels) {
-      this.currentConfig.aiModels = [];
+    // 添加到模型列表
+    this.currentConfig.aiModels = this.currentConfig.aiModels || [];
+    this.currentConfig.aiModels.push(newModel);
+    
+    // 如果这是唯一的激活模型，则设为默认
+    if (active && (!this.currentConfig.selectedAiModel || !this.currentConfig.aiModels.some(m => m.name !== name && m.active))) {
+      this.currentConfig.selectedAiModel = name;
     }
     
-    this.currentConfig.aiModels.push(newModel);
+    // 重新加载模型列表
+    this.loadAiModels();
     
     // 关闭模态框
     this.closeAddModelModal();
     
-    // 重新加载模型
-    this.loadAiModels();
-    
-    // 如果新模型是激活状态且有API密钥，自动选择它作为默认模型
-    if (newModel.active && newModel.apiKey) {
-      this.defaultModelSelect.value = newModel.name;
-    }
-    
     // 显示成功消息
-    this.showStatus(true, `已成功添加自定义模型 "${modelName}"！`);
+    this.showStatus(true, `已添加模型 "${name}"`);
   }
   
   /**
    * 验证模型表单
-   * @returns {boolean} 是否验证通过
+   * @returns {{valid: boolean, message: string}} - 验证结果
    */
   validateModelForm() {
-    // 验证模型名称
-    if (!this.modelNameInput.value.trim()) {
-      alert('请输入服务商/模型名称');
-      this.modelNameInput.focus();
-      return false;
+    const name = this.modelNameInput.value.trim();
+    const apiKey = this.modelApiKeyInput.value.trim();
+    const url = this.modelApiUrlInput.value.trim();
+    const models = this.modelAvailableModelsInput.value.trim();
+    const selectedModel = this.modelDefaultModelSelect.value;
+    
+    if (!name) {
+      return { valid: false, message: '请输入模型名称' };
     }
     
-    // 验证API密钥
-    if (!this.modelApiKeyInput.value.trim()) {
-      alert('请输入API密钥');
-      this.modelApiKeyInput.focus();
-      return false;
+    // 检查名称是否重复
+    if (this.currentConfig.aiModels.some(model => model.name === name)) {
+      return { valid: false, message: `模型名称 "${name}" 已存在，请使用不同的名称` };
     }
     
-    // 验证API地址
-    if (!this.modelApiUrlInput.value.trim()) {
-      alert('请输入API地址');
-      this.modelApiUrlInput.focus();
-      return false;
+    if (!apiKey) {
+      return { valid: false, message: '请输入API密钥' };
     }
     
-    // 验证可用模型
-    const modelsText = this.modelAvailableModelsInput.value;
-    const models = modelsText.split(/[,\n]/).map(m => m.trim()).filter(m => m);
-    if (models.length === 0) {
-      alert('请输入至少一个可用模型');
-      this.modelAvailableModelsInput.focus();
-      return false;
+    if (!url) {
+      return { valid: false, message: '请输入API地址' };
     }
     
-    // 验证默认选用模型
-    if (!this.modelDefaultModelSelect.value) {
-      alert('请选择默认选用模型');
-      this.modelDefaultModelSelect.focus();
-      return false;
+    if (!models) {
+      return { valid: false, message: '请输入至少一个可用模型名称' };
     }
     
-    return true;
+    if (!selectedModel) {
+      return { valid: false, message: '请选择默认模型' };
+    }
+    
+    return { valid: true, message: '' };
   }
   
   /**
    * 确认删除模型
    * @param {Object} model - 要删除的模型
-   * @param {number} index - 模型的索引
+   * @param {number} index - 模型索引
    */
   confirmDeleteModel(model, index) {
-    // 保存要删除的模型信息
     this.modelToDelete = { model, index };
-    
-    // 设置确认对话框内容
     this.deleteModelNameSpan.textContent = model.name;
     
     // 显示确认对话框
-    this.confirmDeleteModal.classList.add('active');
+    this.confirmDeleteModal.style.display = 'flex';
+    setTimeout(() => {
+      this.confirmDeleteModal.classList.add('active');
+    }, 10);
   }
   
   /**
-   * 关闭删除确认模态框
+   * 关闭删除确认对话框
    */
   closeDeleteModal() {
     this.confirmDeleteModal.classList.remove('active');
-    this.modelToDelete = null;
+    setTimeout(() => {
+      this.confirmDeleteModal.style.display = 'none';
+      this.modelToDelete = null;
+    }, 300);
   }
   
   /**
@@ -548,60 +559,73 @@ class SettingsController {
   deleteModel() {
     if (!this.modelToDelete) return;
     
-    const { index } = this.modelToDelete;
+    const { model, index } = this.modelToDelete;
     
-    // 从配置中删除模型
+    // 从数组中删除
     this.currentConfig.aiModels.splice(index, 1);
+    
+    // 如果删除的是当前选中的默认模型，重置选择
+    if (this.currentConfig.selectedAiModel === model.name) {
+      const active = this.currentConfig.aiModels.find(m => m.active);
+      this.currentConfig.selectedAiModel = active ? active.name : null;
+    }
+    
+    // 重新加载模型列表
+    this.loadAiModels();
     
     // 关闭模态框
     this.closeDeleteModal();
     
-    // 重新加载模型
-    this.loadAiModels();
-    
     // 显示成功消息
-    this.showStatus(true, '已成功删除模型！');
+    this.showStatus(true, `已删除模型 "${model.name}"`);
   }
   
   /**
    * 测试模型连接
    * @param {number} index - 模型索引
-   * @returns {Promise<Object>} - 测试结果
+   * @returns {Promise<{success: boolean, error: string|null}>} - 测试结果
    */
   async testModelConnection(index) {
-    if (!this.currentConfig.aiModels || index >= this.currentConfig.aiModels.length) {
-      return { success: false, message: '找不到指定的模型' };
-    }
-    
-    const model = this.currentConfig.aiModels[index];
-    
     try {
-      // 显示测试状态
-      const card = this.modelCardsContainer.querySelector(`[data-index="${index}"]`);
+      const model = this.currentConfig.aiModels[index];
       
-      // 测试连接
-      const result = await llmServiceInstance.testModelConnectivity({...model});
-      
-      // 更新测试结果UI
-      if (card) {
-        this.modelView.updateTestResult(card, result);
+      // 检查必需字段
+      if (!model.apiKey) {
+        return { success: false, error: '请先设置API密钥' };
       }
       
-      return result;
+      if (!model.url) {
+        return { success: false, error: '请先设置API地址' };
+      }
+      
+      // 简单的连接测试
+      const testResult = await aiServiceInstance.testModelConnectivity({
+        provider: model.name,
+        apiKey: model.apiKey,
+        url: model.url,
+        selectedModel: model.selectedModel
+      });
+      
+      // 使用返回的结果
+      return { 
+        success: testResult.success, 
+        error: testResult.success ? null : testResult.message 
+      };
     } catch (error) {
-      console.error('测试连接出错:', error);
-      return {
-        success: false,
-        message: `测试失败: ${error.message}`
+      console.error('测试连接错误:', error);
+      return { 
+        success: false, 
+        error: error.message || '连接失败，请检查API密钥和地址' 
       };
     }
   }
 }
 
-// 当DOM加载完成后初始化
-document.addEventListener('DOMContentLoaded', () => {
-  const settingsController = new SettingsController();
-  settingsController.init();
-});
+// 初始化实例
+const controller = new SettingsController();
+export default controller;
 
-export default SettingsController; 
+// 页面加载完成后初始化
+document.addEventListener('DOMContentLoaded', () => {
+  controller.init();
+}); 
