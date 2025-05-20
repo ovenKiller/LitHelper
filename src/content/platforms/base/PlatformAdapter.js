@@ -5,9 +5,8 @@
  */
 
 import UIManager from '../../ui/UIManager';
-import PaperControls from '../../ui/components/PaperControls';
-import SummaryContainer from '../../ui/components/SummaryContainer';
 
+import { logger } from '../../../background/utils/logger';
 class PlatformAdapter {
   constructor() {
     this.uiManager = null;
@@ -21,7 +20,7 @@ class PlatformAdapter {
     if (!this.isPageSupported()) {
       throw new Error('Page not supported');
     }
-    console.log("platform adapter初始化")
+    logger.log("platform adapter初始化")
     // 在initialize方法中创建UIManager
     this.uiManager = new UIManager();
     await this.uiManager.initialize(this);

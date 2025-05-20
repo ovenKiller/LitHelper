@@ -4,8 +4,10 @@
  * A popup window component that can be used across different platforms
  */
 
-// 从public目录加载SVG图标
-const DELETE_ICON_PATH = 'public/icons/delete-icon.svg';
+import { logger } from '../../../background/utils/logger.js';
+
+// 正确的路径，与manifest.json中的web_accessible_resources配置一致
+const DELETE_ICON_PATH = 'icons/delete-icon.svg';
 
 class PopupWindow {
   constructor() {
@@ -20,7 +22,7 @@ class PopupWindow {
       aiTranslate: false, 
       generateMindMap: false
     };
-    console.log('PopupWindow constructor');
+    logger.log('PopupWindow constructor');
   }
 
   /**
@@ -61,7 +63,7 @@ class PopupWindow {
       this.isVisible = false;
       this.element.style.display = 'none';
     } catch (error) {
-      console.error('Failed to initialize popup window:', error);
+      logger.error('Failed to initialize popup window:', error);
       throw error;
     }
   }
@@ -93,7 +95,6 @@ class PopupWindow {
     // Create query info
     const queryInfo = document.createElement('div');
     queryInfo.className = 'rs-popup-query';
-    queryInfo.textContent = `Current search: "${options.query || 'Unknown query'}"`;
     this.content.appendChild(queryInfo);
     
     
@@ -209,19 +210,50 @@ class PopupWindow {
   /**
    * Update the paper list
    * @param {Array} papers - Array of paper objects
+   * @param {Function} onSummarizeClick - Callback for paper summarization
+   * @param {Function} onDownloadClick - Callback for paper download
+   * @param {Function} onPaperSelection - Callback for paper selection
    * @param {Function} onRemovePaper - Callback for paper removal
    */
-  updatePaperList(papers, onRemovePaper) {
-    if (!this.paperList) return;
+  updatePaperList(papers, onSummarizeClick, onDownloadClick, onPaperSelection, onRemovePaper) {
+    if (!this.paperList) {
+      logger.error('[POPUP] updatePaperList: paperList 元素不存在');
+      return;
+    }
     
+    if (!papers || !Array.isArray(papers)) {
+      logger.error('[POPUP] updatePaperList: 无效的论文数组:', papers);
+      return;
+    }
+    
+    logger.log('[POPUP] updatePaperList: 更新论文列表，数量:', papers.length);
+    logger.log('[POPUP] updatePaperList: onRemovePaper是否存在:', !!onRemovePaper);
+    
+    // 设置默认的移除回调函数，防止错误
+    const defaultRemoveCallback = (paperId) => {
+      logger.warn('[POPUP] 未提供移除论文回调函数，无法删除论文:', paperId);
+      return Promise.reject(new Error('未提供删除回调函数'));
+    };
+    
+    // 使用提供的回调或默认回调
+    const safeRemoveCallback = typeof onRemovePaper === 'function' ? onRemovePaper : defaultRemoveCallback;
     
     // Clear existing list
     this.paperList.innerHTML = '';
     
     // Add papers to list
     papers.forEach(paper => {
-      const paperItem = this.createPaperItem(paper, onRemovePaper);
-      this.paperList.appendChild(paperItem);
+      try {
+        if (!paper || !paper.id) {
+          logger.warn('[POPUP] updatePaperList: 跳过无效论文:', paper);
+          return;
+        }
+        
+        const paperItem = this.createPaperItem(paper, safeRemoveCallback);
+        this.paperList.appendChild(paperItem);
+      } catch (error) {
+        logger.error('[POPUP] updatePaperList: 创建论文项目失败:', error);
+      }
     });
   }
 
@@ -232,6 +264,13 @@ class PopupWindow {
    * @returns {HTMLElement}
    */
   createPaperItem(paper, onRemovePaper) {
+    if (!paper || !paper.id) {
+      logger.error('[POPUP] createPaperItem: 无效的论文对象', paper);
+      throw new Error('无效的论文对象');
+    }
+    
+    logger.log('[POPUP] createPaperItem: 创建论文项', paper.id, paper.title);
+    
     const paperItem = document.createElement('div');
     paperItem.className = 'rs-popup-paper-item';
     paperItem.dataset.paperId = paper.id;
@@ -242,17 +281,17 @@ class PopupWindow {
     
     const paperTitle = document.createElement('div');
     paperTitle.className = 'rs-popup-paper-title';
-    paperTitle.textContent = paper.title;
+    paperTitle.textContent = paper.title || 'Untitled Paper';
     paperInfo.appendChild(paperTitle);
     
     const paperAuthors = document.createElement('div');
     paperAuthors.className = 'rs-popup-paper-authors';
-    paperAuthors.textContent = paper.authors;
+    paperAuthors.textContent = paper.authors || 'Unknown Authors';
     paperInfo.appendChild(paperAuthors);
     
     const paperYear = document.createElement('div');
     paperYear.className = 'rs-popup-paper-year';
-    paperYear.textContent = paper.year;
+    paperYear.textContent = paper.year || '';
     paperInfo.appendChild(paperYear);
     
     paperItem.appendChild(paperInfo);
@@ -261,40 +300,113 @@ class PopupWindow {
     const removeButton = document.createElement('div');
     removeButton.className = 'rs-popup-paper-remove';
     
-    // 使用图片标签加载SVG
-    const img = document.createElement('img');
-    img.src = chrome.runtime.getURL(DELETE_ICON_PATH);
-    img.alt = 'Delete';
-    img.className = 'rs-delete-icon';
-    removeButton.appendChild(img);
+    // 添加明显的删除按钮样式
+    removeButton.style.cursor = 'pointer';
+    removeButton.style.minWidth = '30px';
+    removeButton.style.minHeight = '30px';
+    removeButton.style.display = 'flex';
+    removeButton.style.alignItems = 'center';
+    removeButton.style.justifyContent = 'center';
+    removeButton.style.borderRadius = '50%';
+    removeButton.style.backgroundColor = 'rgba(255, 0, 0, 0.1)';
+    removeButton.style.margin = '0 0 0 10px';
+    removeButton.title = '删除此论文';
     
-    removeButton.addEventListener('click', async () => {
+    try {
+      // 使用图片标签加载SVG
+      const iconUrl = chrome.runtime.getURL(DELETE_ICON_PATH);
+      logger.log('[POPUP] createPaperItem: 删除图标URL:', iconUrl);
+      
+      const img = document.createElement('img');
+      img.src = iconUrl;
+      img.alt = 'Delete';
+      img.className = 'rs-delete-icon';
+      img.style.width = '20px';
+      img.style.height = '20px';
+      removeButton.appendChild(img);
+    } catch (error) {
+      logger.error('[POPUP] createPaperItem: 无法加载删除图标:', error);
+      // 如果图标加载失败，使用文字替代
+      removeButton.textContent = '×';
+      removeButton.style.fontSize = '20px';
+      removeButton.style.fontWeight = 'bold';
+      removeButton.style.color = 'red';
+    }
+    
+    // 确保回调函数存在
+    if (typeof onRemovePaper !== 'function') {
+      logger.error('[POPUP] createPaperItem: onRemovePaper 不是一个函数', onRemovePaper);
+      // 即使没有回调，也添加删除按钮的视觉样式，但不添加功能
+      paperItem.appendChild(removeButton);
+      return paperItem;
+    }
+    
+    // 通过debugger和更详细的logger.log来调试
+    logger.log('[POPUP] createPaperItem: 为论文添加删除按钮事件监听器:', paper.id);
+    
+    // 直接使用点击事件，而不是异步包装
+    removeButton.addEventListener('click', function(event) {
+      // 阻止事件冒泡
+      event.stopPropagation();
+      
+      logger.log('[POPUP] 删除按钮被点击:', paper.id);
+      logger.log('[POPUP] 删除回调函数:', onRemovePaper);
+      
+      // 视觉反馈
+      this.style.backgroundColor = 'rgba(255, 0, 0, 0.3)';
+      
       try {
-        if (onRemovePaper) {
-          // 先调用回调函数，等待删除操作完成
-          await onRemovePaper(paper.id);
-          // 移除DOM元素
-          paperItem.remove();
-        }
+        // 显示加载状态
+        const loadingText = document.createElement('span');
+        loadingText.textContent = '...';
+        loadingText.style.fontSize = '16px';
+        this.innerHTML = '';
+        this.appendChild(loadingText);
+        
+        // 先调用回调函数
+        onRemovePaper(paper.id)
+          .then(() => {
+            logger.log('[POPUP] 论文删除成功，移除UI元素:', paper.id);
+            // 删除成功后移除DOM元素
+            if (paperItem.parentNode) {
+              paperItem.parentNode.removeChild(paperItem);
+            }
+          })
+          .catch(error => {
+            logger.error(`[POPUP] 删除论文失败 ${paper.id}:`, error);
+            // 恢复按钮状态
+            this.style.backgroundColor = 'rgba(255, 0, 0, 0.1)';
+            this.innerHTML = '';
+            this.textContent = '×';
+            this.style.fontSize = '20px';
+            this.style.fontWeight = 'bold';
+            
+            // 添加错误提示UI
+            const errorMessage = document.createElement('div');
+            errorMessage.className = 'rs-error-message';
+            errorMessage.textContent = '删除论文失败，请重试。';
+            errorMessage.style.color = 'red';
+            errorMessage.style.fontSize = '12px';
+            errorMessage.style.marginTop = '4px';
+            
+            // 将错误消息插入到paperItem中
+            paperItem.appendChild(errorMessage);
+            
+            // 3秒后移除错误消息
+            setTimeout(() => {
+              if (errorMessage.parentNode) {
+                errorMessage.parentNode.removeChild(errorMessage);
+              }
+            }, 3000);
+          });
       } catch (error) {
-        console.error(`Failed to remove paper ${paper.id}:`, error);
-        // 添加错误提示UI
-        const errorMessage = document.createElement('div');
-        errorMessage.className = 'rs-error-message';
-        errorMessage.textContent = 'Failed to remove paper. Please try again.';
-        errorMessage.style.color = 'red';
-        errorMessage.style.fontSize = '12px';
-        errorMessage.style.marginTop = '4px';
-        
-        // 将错误消息插入到paperItem中
-        paperItem.appendChild(errorMessage);
-        
-        // 3秒后移除错误消息
-        setTimeout(() => {
-          errorMessage.remove();
-        }, 3000);
+        logger.error(`[POPUP] 调用删除回调时出错 ${paper.id}:`, error);
+        // 恢复按钮状态
+        this.style.backgroundColor = 'rgba(255, 0, 0, 0.1)';
+        this.textContent = '×';
       }
     });
+    
     paperItem.appendChild(removeButton);
     
     return paperItem;

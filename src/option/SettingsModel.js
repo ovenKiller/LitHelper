@@ -5,6 +5,7 @@
  */
 
 import { storage } from '../utils/storage';
+import { logger } from '../background/utils/logger.js';
 
 // 默认配置
 const DEFAULT_CONFIG = {
@@ -85,7 +86,7 @@ class Config {
         { ...DEFAULT_CONFIG };
       return this.currentConfig;
     } catch (error) {
-      console.error('初始化配置失败:', error);
+      logger.error('初始化配置失败:', error);
       this.currentConfig = { ...DEFAULT_CONFIG };
       return this.currentConfig;
     }

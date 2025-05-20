@@ -326,7 +326,7 @@ class ModelView {
       } catch (error) {
         // 显示错误信息
         this.showStatus(statusElement, 'error', error.message || '测试时发生错误');
-        console.error('测试连接失败:', error);
+        logger.error('测试连接失败:', error);
       } finally {
         // 恢复 UI 状态
         testBtn.disabled = false;

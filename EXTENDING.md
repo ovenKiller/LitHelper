@@ -204,7 +204,7 @@ export class Analytics {
     if (!this.enabled) return;
     
     // Implement tracking logic
-    console.log(`Analytics: ${category} - ${action} - ${label} - ${value}`);
+    logger.log(`Analytics: ${category} - ${action} - ${label} - ${value}`);
   }
   
   // More analytics methods

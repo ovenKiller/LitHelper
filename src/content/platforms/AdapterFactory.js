@@ -1,6 +1,6 @@
 import { getPlatformType, getPlatformName } from './config';
 import GoogleScholarAdapter from './search/GoogleScholarAdapter';
-import ArxivAdapter from './repository/ArxivAdapter';
+import { logger } from '../../background/utils/logger.js';
 
 class AdapterFactory {
   /**
@@ -36,7 +36,7 @@ class AdapterFactory {
       
       return adapter;
     } catch (error) {
-      console.error('Failed to create adapter:', error);
+      logger.error('Failed to create adapter:', error);
       return null;
     }
   }

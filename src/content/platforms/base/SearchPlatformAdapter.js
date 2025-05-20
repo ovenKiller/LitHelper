@@ -1,5 +1,6 @@
 import PlatformAdapter from './PlatformAdapter';
 
+import { logger } from '../../../background/utils/logger';
 class SearchPlatformAdapter extends PlatformAdapter {
   constructor() {
     super();

@@ -6,6 +6,7 @@
 
 import Config from '../option/SettingsModel';
 import { storage } from '../utils/storage';
+import { logger } from '../background/utils/logger.js';
 
 // Initialize popup controller
 class PopupController {
@@ -43,7 +44,7 @@ class PopupController {
       // Load settings into the UI
       this.populateSettingsUI();
     } catch (error) {
-      console.error('Failed to initialize popup:', error);
+      logger.error('Failed to initialize popup:', error);
       this.showError('Failed to initialize: ' + error.message);
     }
   }
@@ -141,7 +142,7 @@ class PopupController {
         action: 'getPapers'
       }, (response) => {
         if (chrome.runtime.lastError) {
-          console.log('Could not connect to content script:', chrome.runtime.lastError);
+          logger.log('Could not connect to content script:', chrome.runtime.lastError);
           return;
         }
         
@@ -152,7 +153,7 @@ class PopupController {
         }
       });
     } catch (error) {
-      console.error('Failed to get active tab info:', error);
+      logger.error('Failed to get active tab info:', error);
     }
   }
 
@@ -276,7 +277,7 @@ class PopupController {
         }
       });
     } catch (error) {
-      console.error('Failed to populate settings UI:', error);
+      logger.error('Failed to populate settings UI:', error);
     }
   }
 
@@ -436,7 +437,7 @@ class PopupController {
         statusEl.style.display = 'none';
       }, 3000);
     } catch (error) {
-      console.error('Failed to save settings:', error);
+      logger.error('Failed to save settings:', error);
       
       // Show error message
       const statusEl = document.getElementById('settings-status');
@@ -560,7 +561,7 @@ class PopupController {
         summariesContainer.style.display = 'none';
       }
     } catch (error) {
-      console.error('Failed to refresh history UI:', error);
+      logger.error('Failed to refresh history UI:', error);
     }
   }
 
@@ -582,7 +583,7 @@ class PopupController {
       }, (response) => {
         if (!response || !response.success) {
           const error = response?.error || 'Failed to summarize paper';
-          console.error('Failed to summarize paper:', error);
+          logger.error('Failed to summarize paper:', error);
           alert('Failed to summarize paper: ' + error);
           return;
         }
@@ -592,7 +593,7 @@ class PopupController {
         this.switchTab('history');
       });
     } catch (error) {
-      console.error('Failed to summarize paper:', error);
+      logger.error('Failed to summarize paper:', error);
       alert('Failed to summarize paper: ' + error.message);
     }
   }
@@ -610,7 +611,7 @@ class PopupController {
       }, (response) => {
         if (!response || !response.success) {
           const error = response?.error || 'Failed to download paper';
-          console.error('Failed to download paper:', error);
+          logger.error('Failed to download paper:', error);
           alert('Failed to download paper: ' + error);
           return;
         }
@@ -619,7 +620,7 @@ class PopupController {
         alert('Paper download started!');
       });
     } catch (error) {
-      console.error('Failed to download paper:', error);
+      logger.error('Failed to download paper:', error);
       alert('Failed to download paper: ' + error.message);
     }
   }
@@ -652,7 +653,7 @@ class PopupController {
       }, (response) => {
         if (!response || !response.success) {
           const error = response?.error || 'Failed to batch summarize papers';
-          console.error('Failed to batch summarize papers:', error);
+          logger.error('Failed to batch summarize papers:', error);
           alert('Failed to batch summarize papers: ' + error);
           return;
         }
@@ -662,7 +663,7 @@ class PopupController {
         this.switchTab('history');
       });
     } catch (error) {
-      console.error('Failed to batch summarize papers:', error);
+      logger.error('Failed to batch summarize papers:', error);
       alert('Failed to batch summarize papers: ' + error.message);
     }
   }

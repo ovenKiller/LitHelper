@@ -4,8 +4,8 @@
  */
 
 import BaseExtractor from '../base/BaseExtractor';
-import { createEmptyPaper } from '../../../models/Paper';
-
+import { Paper } from '../../../models/Paper';
+import { logger } from '../../../background/utils/logger';
 export default class GoogleScholarExtractor extends BaseExtractor {
   constructor() {
     super();
@@ -22,8 +22,8 @@ export default class GoogleScholarExtractor extends BaseExtractor {
   }
 
   async extract() {
-    const paperInfo = createEmptyPaper();
-    paperInfo.url = window.location.href;
+    const paperInfo = new Paper();
+    paperInfo.addUrl(window.location.href);
     paperInfo.source = 'googleScholar';
     
     // Extract title
@@ -71,7 +71,17 @@ export default class GoogleScholarExtractor extends BaseExtractor {
         paperInfo.citationCount = parseInt(citationMatch[1], 10);
       }
     }
-
+    
+    // Extract All versions URL
+    const allVersionsLink = Array.from(document.querySelectorAll('.gs_fl a'))
+      .find(a => {
+        const text = a.textContent.toLowerCase();
+        return text.includes('all') && text.includes('version');
+      });
+    if (allVersionsLink) {
+      paperInfo.allVersionsUrl = allVersionsLink.href;
+      paperInfo.googleScholarVersionsUrl = allVersionsLink.href;
+    }
     
     // Find PDF URL
     paperInfo.pdfUrl = this.findPDFLink(document);

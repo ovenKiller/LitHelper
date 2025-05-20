@@ -4,6 +4,8 @@
  * A floating button component that can be used across different platforms
  */
 
+import { logger } from '../../../background/utils/logger.js';
+
 class FloatingButton {
   constructor() {
     this.element = null;
@@ -56,10 +58,10 @@ class FloatingButton {
     this.counterBadge.className = 'rs-counter-badge';
     this.counterBadge.style.display = 'none';
     button.appendChild(this.counterBadge);
-    console.log("按钮元素创建了")
+    logger.log("按钮元素创建了");
     // Add click event
     button.addEventListener('click', () => {
-      console.log("floating button is clicked")
+      logger.log("floating button is clicked");
       if (this.onClickCallback) {
         this.onClickCallback();
       }
@@ -72,12 +74,12 @@ class FloatingButton {
    * Show the floating button
    */
   show() {
-    console.log('show floating button');
+    logger.log('show floating button');
     if (this.element) {
       this.element.style.display = 'flex';
-      console.log('Floating button shown');
+      logger.log('Floating button shown');
     } else {
-      console.warn('Cannot show floating button: element is null');
+      logger.warn('Cannot show floating button: element is null');
     }
   }
 
@@ -105,7 +107,7 @@ class FloatingButton {
    */
   setPaperCount(count) {
     if (typeof count !== 'number') {
-      console.warn('Invalid paper count provided:', count);
+      logger.warn('Invalid paper count provided:', count);
       count = 0;
     }
     

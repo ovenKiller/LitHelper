@@ -204,7 +204,7 @@ export class Analytics {
     if (!this.enabled) return;
     
     // 实现跟踪逻辑
-    console.log(`分析: ${category} - ${action} - ${label} - ${value}`);
+    logger.log(`分析: ${category} - ${action} - ${label} - ${value}`);
   }
   
   // 更多分析方法

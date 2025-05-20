@@ -6,6 +6,7 @@
  */
 
 import configInstance from '../option/SettingsModel';
+import { logger } from '../background/utils/logger.js';
 
 class AIService {
   constructor() {
@@ -142,7 +143,7 @@ class AIService {
       await this.config.updateConfig(this.config.currentConfig);
       return true;
     } catch (error) {
-      console.error('保存配置失败:', error);
+      logger.error('保存配置失败:', error);
       return false;
     }
   }
@@ -156,7 +157,7 @@ class AIService {
       await this.config.resetConfig();
       return true;
     } catch (error) {
-      console.error('重置配置失败:', error);
+      logger.error('重置配置失败:', error);
       return false;
     }
   }
@@ -221,39 +222,51 @@ class AIService {
    * @throws {Error} - 如果调用失败或配置错误
    */
   async callLLM(prompt, options = {}) {
-    // 确保配置已加载
-    if (!this.config.currentConfig) {
-      await this.config.init();
-    }
-    
-    // 获取激活的模型配置
-    const modelConfig = this.config.getEnabledAiModel();
-    
-    if (!modelConfig) {
-      throw new Error("没有启用或配置有效的AI模型。请在设置中配置并启用AI模型。");
-    }
-    
-    // 使用options中的参数覆盖模型配置，如果有的话
-    const effectiveConfig = {
-      ...modelConfig,
-      maxTokens: options.maxTokens || modelConfig.maxTokens,
-      temperature: options.temperature || modelConfig.temperature
-    };
-    
-    // 构造API请求
-    const requestDetails = this._constructOpenAICompatibleRequest(prompt, effectiveConfig, options.stream);
-    
     try {
-      // 发送请求并获取响应
-      const responseData = await this._sendRequest(requestDetails);
-      
-      // 解析并返回响应中的文本内容
-      return this._parseOpenAICompatibleResponse(responseData);
+      // 确保配置已初始化
+      if (!this.config.currentConfig) {
+        await this.config.init();
+      }
+
+      // 选择要使用的模型配置
+      let modelName = options.modelName || this.config.currentConfig.selectedAiModel;
+      if (!modelName) {
+        // 如果没有设置默认模型，则使用第一个激活的模型
+        const activeModels = await this.getEnabledModels();
+        if (activeModels.length === 0) {
+          return { 
+            success: false, 
+            message: "没有可用的AI模型。请在设置中配置API密钥。" 
+          };
+        }
+        modelName = activeModels[0].name;
+      }
+
+      // 查找模型配置
+      const modelConfig = this.config.currentConfig.aiModels.find(m => m.name === modelName);
+      if (!modelConfig || !modelConfig.active || !modelConfig.apiKey) {
+        return { 
+          success: false, 
+          message: `模型"${modelName}"不可用或缺少API密钥` 
+        };
+      }
+
+      // 根据模型提供商构建请求
+      const requestDetails = this._constructOpenAICompatibleRequest(
+        prompt, 
+        modelConfig,
+        options.stream || false
+      );
+
+      // 发送请求
+      const result = await this._sendRequest(requestDetails);
+      return result;
     } catch (error) {
-      console.error("调用AI模型失败:", error);
-      
-      // 重新抛出更友好的错误消息
-      throw new Error(`调用AI模型失败：${error.message || '未知错误'}`);
+      logger.error("调用AI模型失败:", error);
+      return {
+        success: false,
+        message: `AI调用失败: ${error.message}`
+      };
     }
   }
 
@@ -437,22 +450,25 @@ class AIService {
    * @private
    */
   _parseOpenAICompatibleResponse(responseData) {
-    // 检查响应中是否包含有效的回复内容
-    if (responseData && 
-        responseData.choices && 
-        responseData.choices[0] && 
-        responseData.choices[0].message && 
-        responseData.choices[0].message.content) {
-      return responseData.choices[0].message.content.trim();
-    } 
-    // 检查响应中是否包含API错误
-    else if (responseData && responseData.error && responseData.error.message) {
-      throw new Error(`API错误: ${responseData.error.message}`);
+    // 检查响应是否有效
+    if (!responseData || !responseData.choices || !responseData.choices.length) {
+      logger.warn("无法从响应中提取有效内容:", responseData);
+      return "";
+    }
+
+    // 提取生成的文本内容
+    const choice = responseData.choices[0];
+    
+    // 根据不同模型返回格式提取内容
+    if (choice.message && choice.message.content) {
+      return choice.message.content.trim();
+    } else if (choice.text) {
+      return choice.text.trim();
+    } else if (choice.content) {
+      return choice.content.trim();
     }
     
-    // 如果响应格式不符合预期
-    console.warn("无法从响应中提取有效内容:", responseData);
-    throw new Error("模型响应格式不符合OpenAI兼容规范或内容为空。");
+    return "";
   }
 }
 

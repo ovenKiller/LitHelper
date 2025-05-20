@@ -6,6 +6,7 @@
 import GoogleScholarExtractor from './implementations/GoogleScholarExtractor';
 import ArxivExtractor from './implementations/ArxivExtractor';
 
+import { logger } from '../../../background/utils/logger';
 export default class ExtractorFactory {
   constructor() {
     this.extractors = [
@@ -28,7 +29,7 @@ export default class ExtractorFactory {
    * @returns {BaseExtractor|null}
    */
   getExtractorForUrl(url) {
-    console.log("getExtractorForUrl", url);
+    logger.log("getExtractorForUrl", url);
     if (url.includes('arxiv.org')) {
       return this.extractors.find(extractor => extractor instanceof ArxivExtractor);
     }
@@ -42,7 +43,7 @@ export default class ExtractorFactory {
   async extract() {
     const extractor = this.getExtractor();
     if (!extractor) {
-      console.warn('No suitable extractor found for current page');
+      logger.warn('No suitable extractor found for current page');
       return null;
     }
 
@@ -50,7 +51,7 @@ export default class ExtractorFactory {
       const paperInfo = await extractor.extract();
       return paperInfo;
     } catch (error) {
-      console.error('Error extracting paper information:', error);
+      logger.error('Error extracting paper information:', error);
       return null;
     }
   }
@@ -63,7 +64,7 @@ export default class ExtractorFactory {
   async extractFromUrl(url) {
     const extractor = this.getExtractorForUrl(url);
     if (!extractor) {
-      console.warn(`No suitable extractor found for URL: ${url}`);
+      logger.warn(`No suitable extractor found for URL: ${url}`);
       return null;
     }
 
@@ -73,7 +74,7 @@ export default class ExtractorFactory {
       }
       return null;
     } catch (error) {
-      console.error('Error extracting paper information from URL:', error);
+      logger.error('Error extracting paper information from URL:', error);
       return null;
     }
   }

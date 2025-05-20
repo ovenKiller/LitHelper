@@ -11,6 +11,7 @@ class PaperControls {
     this.element = null;
     this.summarizeButton = null;
     this.downloadButton = null;
+    this.addButton = null;
   }
 
   /**
@@ -30,23 +31,29 @@ class PaperControls {
 
   /**
    * Initialize the paper controls
-   * @param {Function} onSummarize - Callback when summarize button is clicked
-   * @param {Function} onDownload - Callback when download button is clicked
+   * @param {Object} options - 配置选项
+   * @param {boolean} options.hasPdf - 是否有PDF可用
+   * @param {Function} options.onSummarize - 点击总结按钮的回调
+   * @param {Function} options.onDownload - 点击下载按钮的回调
+   * @param {Function} options.onAddToPaperBox - 点击添加到论文盒按钮的回调
    * @returns {Promise<void>}
    */
-  async initialize(onSummarize, onDownload) {
+  async initialize(options = { hasPdf: false }) {
     this._loadStyles();
-    this.element = this.createElement(onSummarize, onDownload);
+    this.element = this.createElement(options);
     this.container.appendChild(this.element);
   }
 
   /**
    * Create the paper controls element
-   * @param {Function} onSummarize - Callback when summarize button is clicked
-   * @param {Function} onDownload - Callback when download button is clicked
+   * @param {Object} options - 配置选项
+   * @param {boolean} options.hasPdf - 是否有PDF可用
+   * @param {Function} options.onSummarize - 点击总结按钮的回调
+   * @param {Function} options.onDownload - 点击下载按钮的回调
+   * @param {Function} options.onAddToPaperBox - 点击添加到论文盒按钮的回调
    * @returns {HTMLElement}
    */
-  createElement(onSummarize, onDownload) {
+  createElement(options = { hasPdf: false }) {
     // Create controls container
     const container = document.createElement('div');
     container.className = 'rs-controls';
@@ -56,11 +63,11 @@ class PaperControls {
     this.summarizeButton = document.createElement('button');
     this.summarizeButton.className = 'rs-summarize-btn';
     this.summarizeButton.dataset.paperId = this.paperId;
-    this.summarizeButton.title = 'Summarize this paper';
-    this.summarizeButton.textContent = 'Summarize';
+    this.summarizeButton.title = '总结这篇论文';
+    this.summarizeButton.textContent = '总结';
     this.summarizeButton.addEventListener('click', () => {
-      if (onSummarize) {
-        onSummarize(this.paperId);
+      if (options.onSummarize) {
+        options.onSummarize(this.paperId);
       }
     });
     container.appendChild(this.summarizeButton);
@@ -69,21 +76,34 @@ class PaperControls {
     this.downloadButton = document.createElement('button');
     this.downloadButton.className = 'rs-download-btn';
     this.downloadButton.dataset.paperId = this.paperId;
-    this.downloadButton.title = 'Download PDF';
-    this.downloadButton.textContent = 'Download';
+    this.downloadButton.title = '下载PDF';
+    this.downloadButton.textContent = '下载';
     
     // Disable download button if no PDF link
     if (!options.hasPdf) {
       this.downloadButton.disabled = true;
-      this.downloadButton.title = 'No PDF available';
+      this.downloadButton.title = '没有可用的PDF';
     } else {
       this.downloadButton.addEventListener('click', () => {
-        if (onDownload) {
-          onDownload(this.paperId);
+        if (options.onDownload) {
+          options.onDownload(this.paperId);
         }
       });
     }
     container.appendChild(this.downloadButton);
+    
+    // 创建"添加到论文盒"按钮
+    this.addButton = document.createElement('button');
+    this.addButton.className = 'rs-add-btn';
+    this.addButton.dataset.paperId = this.paperId;
+    this.addButton.title = '添加到论文盒';
+    this.addButton.textContent = '添加';
+    this.addButton.addEventListener('click', () => {
+      if (options.onAddToPaperBox) {
+        options.onAddToPaperBox(this.paperId);
+      }
+    });
+    container.appendChild(this.addButton);
     
     return container;
   }
@@ -98,7 +118,7 @@ class PaperControls {
     this.summarizeButton.dataset.originalText = this.summarizeButton.textContent;
     
     // Show loading state
-    this.summarizeButton.textContent = 'Summarizing...';
+    this.summarizeButton.textContent = '总结中...';
     this.summarizeButton.disabled = true;
     this.summarizeButton.classList.add('rs-loading');
   }
@@ -113,7 +133,7 @@ class PaperControls {
     if (this.summarizeButton.dataset.originalText) {
       this.summarizeButton.textContent = this.summarizeButton.dataset.originalText;
     } else {
-      this.summarizeButton.textContent = 'Summarize';
+      this.summarizeButton.textContent = '总结';
     }
     
     // Restore state
@@ -131,7 +151,7 @@ class PaperControls {
     this.downloadButton.dataset.originalText = this.downloadButton.textContent;
     
     // Show loading state
-    this.downloadButton.textContent = 'Downloading...';
+    this.downloadButton.textContent = '下载中...';
     this.downloadButton.disabled = true;
     this.downloadButton.classList.add('rs-loading');
   }
@@ -146,7 +166,7 @@ class PaperControls {
     if (this.downloadButton.dataset.originalText) {
       this.downloadButton.textContent = this.downloadButton.dataset.originalText;
     } else {
-      this.downloadButton.textContent = 'Download';
+      this.downloadButton.textContent = '下载';
     }
     
     // Restore state
@@ -161,13 +181,30 @@ class PaperControls {
     if (!this.downloadButton) return;
     
     // Show success state
-    this.downloadButton.textContent = 'Downloaded';
+    this.downloadButton.textContent = '已下载';
     this.downloadButton.classList.add('rs-success');
     
     // Restore after 2 seconds
     setTimeout(() => {
-      this.downloadButton.textContent = 'Download';
+      this.downloadButton.textContent = '下载';
       this.downloadButton.classList.remove('rs-success');
+    }, 2000);
+  }
+
+  /**
+   * 显示添加成功状态
+   */
+  showAddSuccess() {
+    if (!this.addButton) return;
+    
+    // 显示成功状态
+    this.addButton.textContent = '已添加';
+    this.addButton.classList.add('rs-success');
+    
+    // 2秒后恢复
+    setTimeout(() => {
+      this.addButton.textContent = '添加';
+      this.addButton.classList.remove('rs-success');
     }, 2000);
   }
 

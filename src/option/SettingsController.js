@@ -7,6 +7,7 @@
 import Config from './SettingsModel';
 import aiServiceInstance from '../api/aiService';
 import ModelView from './SettingsView';
+import { logger } from '../background/utils/logger.js';
 
 class SettingsController {
   constructor() {
@@ -79,7 +80,7 @@ class SettingsController {
       // 加载配置到UI
       this.loadConfigToUI();
     } catch (error) {
-      console.error('初始化设置页面失败:', error);
+      logger.error('初始化设置页面失败:', error);
       this.showStatus(false, '加载设置失败：' + error.message);
     }
   }
@@ -252,12 +253,23 @@ class SettingsController {
       // 收集摘要设置
       this.collectSummarizationSettings();
       
+      // 更新选中的默认AI模型
+      this.currentConfig.selectedAiModel = this.defaultModelSelect.value;
+      
       // 保存配置
       await this.config.updateConfig(this.currentConfig);
       
+      // 显示成功消息
       this.showStatus(true, '设置已保存');
+      
+      // 3秒后隐藏消息
+      setTimeout(() => {
+        this.statusMessage.style.display = 'none';
+      }, 3000);
     } catch (error) {
-      console.error('保存设置失败:', error);
+      logger.error('保存设置失败:', error);
+      
+      // 显示错误消息
       this.showStatus(false, '保存设置失败：' + error.message);
     }
   }
@@ -291,14 +303,25 @@ class SettingsController {
   async resetSettings() {
     try {
       // 重置配置
-      this.currentConfig = await this.config.resetConfig();
+      await this.config.resetConfig();
       
-      // 重新加载UI
+      // 重新加载配置
+      this.currentConfig = this.config.getConfig();
+      
+      // 更新UI
       this.loadConfigToUI();
       
+      // 显示成功消息
       this.showStatus(true, '设置已重置为默认值');
+      
+      // 3秒后隐藏消息
+      setTimeout(() => {
+        this.statusMessage.style.display = 'none';
+      }, 3000);
     } catch (error) {
-      console.error('重置设置失败:', error);
+      logger.error('重置设置失败:', error);
+      
+      // 显示错误消息
       this.showStatus(false, '重置设置失败：' + error.message);
     }
   }
@@ -583,39 +606,28 @@ class SettingsController {
   /**
    * 测试模型连接
    * @param {number} index - 模型索引
-   * @returns {Promise<{success: boolean, error: string|null}>} - 测试结果
    */
   async testModelConnection(index) {
     try {
-      const model = this.currentConfig.aiModels[index];
+      // 这需要与 AIService 集成，服务新增在 0.8.0 版本
+      const result = await aiServiceInstance.testModelConnection(index);
       
-      // 检查必需字段
-      if (!model.apiKey) {
-        return { success: false, error: '请先设置API密钥' };
+      if (result.success) {
+        return {
+          success: true,
+          message: result.message || "连接成功"
+        };
+      } else {
+        return {
+          success: false,
+          message: result.message || "连接失败"
+        };
       }
-      
-      if (!model.url) {
-        return { success: false, error: '请先设置API地址' };
-      }
-      
-      // 简单的连接测试
-      const testResult = await aiServiceInstance.testModelConnectivity({
-        provider: model.name,
-        apiKey: model.apiKey,
-        url: model.url,
-        selectedModel: model.selectedModel
-      });
-      
-      // 使用返回的结果
-      return { 
-        success: testResult.success, 
-        error: testResult.success ? null : testResult.message 
-      };
     } catch (error) {
-      console.error('测试连接错误:', error);
-      return { 
-        success: false, 
-        error: error.message || '连接失败，请检查API密钥和地址' 
+      logger.error('测试连接错误:', error);
+      return {
+        success: false,
+        message: error.message || "连接测试过程中发生错误"
       };
     }
   }

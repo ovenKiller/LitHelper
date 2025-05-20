@@ -4,6 +4,8 @@
  * 提供数据持久化存储服务
  */
 
+import { logger } from '../background/utils/logger.js';
+
 export class StorageService {
   /**
    * 保存数据到存储
@@ -12,14 +14,25 @@ export class StorageService {
    */
   async saveData(key, data) {
     try {
+      logger.log(`[STORAGE] saveData: 开始保存数据 "${key}"`, typeof data === 'object' ? JSON.stringify(data) : data);
       const saveObj = {};
       saveObj[key] = data;
       await chrome.storage.local.set(saveObj);
+      logger.log(`[STORAGE] saveData: 数据 "${key}" 保存成功`);
       return true;
     } catch (error) {
-      console.error(`保存数据失败[${key}]:`, error);
+      logger.error(`[STORAGE] saveData: 保存数据失败[${key}]:`, error);
       return false;
     }
+  }
+
+  /**
+   * 保存数据到存储（saveData 的别名）
+   * @param {string} key 存储键
+   * @param {any} data 要存储的数据
+   */
+  async set(key, data) {
+    return await this.saveData(key, data);
   }
 
   /**
@@ -29,10 +42,14 @@ export class StorageService {
    */
   async get(key) {
     try {
+      logger.log(`[STORAGE] get: 开始获取数据 "${key}"`);
       const result = await chrome.storage.local.get(key);
+      logger.log(`[STORAGE] get: 数据 "${key}" 获取结果:`, result[key] !== undefined ? (
+        typeof result[key] === 'object' ? JSON.stringify(result[key]) : result[key]
+      ) : 'undefined');
       return result[key];
     } catch (error) {
-      console.error(`获取数据失败[${key}]:`, error);
+      logger.error(`[STORAGE] get: 获取数据失败[${key}]:`, error);
       return null;
     }
   }
@@ -43,10 +60,12 @@ export class StorageService {
    */
   async remove(key) {
     try {
+      logger.log(`[STORAGE] remove: 开始删除数据 "${key}"`);
       await chrome.storage.local.remove(key);
+      logger.log(`[STORAGE] remove: 数据 "${key}" 删除成功`);
       return true;
     } catch (error) {
-      console.error(`删除数据失败[${key}]:`, error);
+      logger.error(`[STORAGE] remove: 删除数据失败[${key}]:`, error);
       return false;
     }
   }
@@ -57,10 +76,11 @@ export class StorageService {
    */
   async savePaper(paper) {
     if (!paper || !paper.id) {
-      console.error('无效的论文数据');
+      logger.error('[STORAGE] savePaper: 无效的论文数据');
       return false;
     }
-    return await this.save(`papers.${paper.id}`, paper);
+    logger.log(`[STORAGE] savePaper: 保存论文 ${paper.id} (${paper.title})`);
+    return await this.saveData(`papers.${paper.id}`, paper);
   }
 
   /**
@@ -77,10 +97,11 @@ export class StorageService {
    */
   async saveSummary(summary) {
     if (!summary || !summary.paperId) {
-      console.error('无效的摘要数据');
+      logger.error('[STORAGE] saveSummary: 无效的摘要数据');
       return false;
     }
-    return await this.save(`summaries.${summary.paperId}`, summary);
+    logger.log(`[STORAGE] saveSummary: 保存摘要 ${summary.paperId}`);
+    return await this.saveData(`summaries.${summary.paperId}`, summary);
   }
 
   /**
@@ -96,6 +117,7 @@ export class StorageService {
    */
   async getAllSummaries() {
     try {
+      logger.log('[STORAGE] getAllSummaries: 开始获取所有摘要');
       const allData = await chrome.storage.local.get(null);
       const summaries = [];
       
@@ -105,9 +127,10 @@ export class StorageService {
         }
       }
       
+      logger.log(`[STORAGE] getAllSummaries: 找到 ${summaries.length} 条摘要`);
       return summaries;
     } catch (error) {
-      console.error('获取所有摘要失败:', error);
+      logger.error('[STORAGE] getAllSummaries: 获取所有摘要失败:', error);
       return [];
     }
   }
@@ -118,12 +141,42 @@ export class StorageService {
    */
   async recordDownload(downloadInfo) {
     if (!downloadInfo || !downloadInfo.paperId) {
-      console.error('无效的下载信息');
+      logger.error('[STORAGE] recordDownload: 无效的下载信息');
       return false;
     }
-    return await this.save(`downloads.${downloadInfo.paperId}`, downloadInfo);
+    logger.log(`[STORAGE] recordDownload: 记录下载 ${downloadInfo.paperId}`);
+    return await this.saveData(`downloads.${downloadInfo.paperId}`, downloadInfo);
   }
 
+  /**
+   * 清空指定前缀的所有数据
+   * @param {string} prefix 键前缀
+   */
+  async clearByPrefix(prefix) {
+    try {
+      logger.log(`[STORAGE] clearByPrefix: 开始清空前缀为 "${prefix}" 的数据`);
+      const allData = await chrome.storage.local.get(null);
+      const keysToRemove = [];
+      
+      for (const key in allData) {
+        if (key.startsWith(prefix)) {
+          keysToRemove.push(key);
+        }
+      }
+      
+      if (keysToRemove.length > 0) {
+        await chrome.storage.local.remove(keysToRemove);
+        logger.log(`[STORAGE] clearByPrefix: 已删除 ${keysToRemove.length} 条数据`);
+      } else {
+        logger.log(`[STORAGE] clearByPrefix: 未找到匹配前缀 "${prefix}" 的数据`);
+      }
+      
+      return true;
+    } catch (error) {
+      logger.error(`[STORAGE] clearByPrefix: 清空数据失败[${prefix}]:`, error);
+      return false;
+    }
+  }
 }
 
 // 创建并导出单例实例，兼容旧代码

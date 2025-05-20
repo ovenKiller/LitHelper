@@ -6,17 +6,16 @@
  * the appropriate platform adapter.
  */
 
-import ConfigManager from './core/ConfigManager';
-import MessageHandler from './core/MessageHandler';
 import PlatformAdapter from './platforms/base/PlatformAdapter';
 import GoogleScholarAdapter from './platforms/search/GoogleScholarAdapter';
 import UIManager from './ui/UIManager';
+import { logger } from '../background/utils/logger.js';
+
 /**
  * Main class for content script
  */
 class ContentScript {
   constructor() {
-    this.configManager = new ConfigManager();
     this.adapter = null;
     this.messageHandler = null;
     this.observer = null;
@@ -29,33 +28,30 @@ class ContentScript {
   
   async initialize() {
     try {
-      console.log('Research Summarizer content script initializing...');
+      logger.log('Research Summarizer content script initializing...');
       
-      await this.configManager.loadConfig();
       
       this.adapter = this.findAdapter();
       if (this.adapter) {
-        console.log(`Platform detected: ${this.adapter.getPlatformName()}`);
+        logger.log(`Platform detected: ${this.adapter.getPlatformName()}`);
         
         await this.adapter.initialize();
-        this.messageHandler = new MessageHandler(this.adapter, this.adapter.uiManager);
-        this.messageHandler.initialize();
         
         this.setupObserver();
         
         if (this.adapter.uiManager && this.adapter.uiManager.floatingButton) {
           this.adapter.uiManager.floatingButton.show();
         } else {
-          console.warn('Cannot show floating button: element is null');
-          console.warn(this.adapter.uiManager);
+          logger.warn('Cannot show floating button: element is null');
+          logger.warn(this.adapter.uiManager);
         }
         
-        console.log('Research Summarizer content script initialized');
+        logger.log('Research Summarizer content script initialized');
       } else {
-        console.log('No supported platform detected');
+        logger.log('No supported platform detected');
       }
     } catch (error) {
-      console.error('Failed to initialize content script:', error);
+      logger.error('Failed to initialize content script:', error);
     }
   }
   

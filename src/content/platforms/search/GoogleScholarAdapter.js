@@ -11,7 +11,8 @@ import SearchPlatformAdapter from '../base/SearchPlatformAdapter';
 import AdapterFactory from '../AdapterFactory';
 import PaperControls from '../../ui/components/PaperControls';
 import SummaryContainer from '../../ui/components/SummaryContainer';
-
+import { Paper } from '../../../models/Paper';
+import { logger } from '../../../background/utils/logger';
 class GoogleScholarAdapter extends SearchPlatformAdapter {
   constructor() {
     super();
@@ -83,19 +84,37 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
     const papers = [];
     
     resultItems.forEach((item, index) => {
-      const paper = {
+      const authorString = this.extractAuthors(item);
+      const authorsArray = authorString.split(',').map(author => author.trim()).filter(author => author.length > 0);
+
+      // 提取论文链接
+      const titleElement = item.querySelector('.gs_rt a');
+      const paperUrl = titleElement?.href || '';
+      
+      // 获取all versions URL
+      const versionsUrl = this.extractAllVersionsUrl(item);
+      
+      const paperData = {
         id: `${idPrefix}_${index}`,
-        element: item,
+        // element: item, // Will be attached later
         source: sourceTag,
         title: this.extractTitle(item),
-        authors: this.extractAuthors(item),
+        authors: authorsArray,
         abstract: this.extractAbstract(item),
+        urls: paperUrl ? [paperUrl] : [],
         pdfUrl: this.extractPdfUrl(item),
-        citations: this.extractCitations(item),
-        year: this.extractYear(item)
+        citationCount: this.extractCitations(item), // Mapped from citations to citationCount
+        allVersionsUrl: versionsUrl,
+        googleScholarVersionsUrl: versionsUrl, // 添加googleScholarVersionsUrl字段
+        publicationDate: this.extractYear(item) // Mapped from year to publicationDate
       };
       
-      papers.push(paper);
+      const paperInstance = new Paper(paperData);
+      // Attach the DOM element to the Paper instance for UI purposes
+      // This property is not part of the formal Paper model but is used by the adapter
+      paperInstance.element = item; 
+      
+      papers.push(paperInstance);
     });
     
     return papers;
@@ -137,7 +156,7 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
       const html = await response.text();
       return this.extractPapersFromHTML(html);
     } catch (error) {
-      console.error('Failed to fetch papers:', error);
+      logger.error('Failed to fetch papers:', error);
       return [];
     }
   }
@@ -185,6 +204,55 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
     return match ? parseInt(match[1]) : 0;
   }
 
+  extractAllVersionsUrl(item) {
+    // 首先检查是否已有可见的"All versions"链接
+    const allLinks = Array.from(item.querySelectorAll('.gs_fl a'));
+    let versionLink = allLinks.find(a => {
+      return (a.textContent.toLowerCase().includes('version') || 
+              (a.href && a.href.includes('cluster='))) && 
+             !a.classList.contains('gs_or_mor');
+    });
+    
+    // 如果直接找到了链接，返回它
+    if (versionLink && versionLink.href) {
+      return versionLink.href;
+    }
+    
+    // 尝试直接从DOM中找到"All Versions"链接，即使它是隐藏的
+    // 查找包含cluster参数的链接，这通常是all versions链接的特征
+    const hiddenVersionsLink = Array.from(item.querySelectorAll('a[href*="cluster"]')).find(a => 
+      a.textContent.toLowerCase().includes('version')
+    );
+    
+    if (hiddenVersionsLink && hiddenVersionsLink.href) {
+      logger.log('找到隐藏的All versions链接:', hiddenVersionsLink.href);
+      return hiddenVersionsLink.href;
+    }
+    
+    // 如果还找不到，尝试获取html源码中的链接
+    // 注意：这种方法绕过了CSP限制，因为我们没有执行JavaScript URL
+    
+    // 检查是否有包含"scholar?cluster="的链接
+    const clusterRegex = /href="([^"]*scholar\?cluster=[^"]*)"/;
+    const itemHtml = item.outerHTML;
+    const clusterMatch = itemHtml.match(clusterRegex);
+    
+    if (clusterMatch && clusterMatch[1]) {
+      const decodedUrl = decodeURIComponent(clusterMatch[1]);
+      logger.log('从HTML源代码中提取All versions URL:', decodedUrl);
+      
+      // 构建完整URL（如果是相对URL）
+      if (decodedUrl.startsWith('/')) {
+        const baseUrl = new URL(window.location.href).origin;
+        return baseUrl + decodedUrl;
+      }
+      return decodedUrl;
+    }
+    
+    logger.log('无法找到All versions链接');
+    return null;
+  }
+
   extractYear(item) {
     const yearMatch = item.querySelector('.gs_a')?.textContent.match(/\b(19|20)\d{2}\b/);
     return yearMatch ? yearMatch[0] : null;
@@ -195,11 +263,11 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
    * @returns {Promise<boolean>} 操作是否成功
    */
   async injectUI() {
-    console.log("页面UI元素嵌入");
+    logger.log("页面UI元素嵌入");
     try {
       // 检查UI管理器是否已设置
       if (!this.uiManager) {
-        console.error('UI Manager not initialized');
+        logger.error('UI Manager not initialized');
         return false;
       }
 
@@ -215,8 +283,12 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
         controls.initialize({
           hasPdf: !!paper.pdfUrl,
           onSummarize: (paperId) => this.uiManager.handleSummarizeClick(paperId, this),
-          onDownload: (paperId) => this.uiManager.handleDownloadClick(paperId, this)
+          onDownload: (paperId) => this.uiManager.handleDownloadClick(paperId, this),
+          onAddToPaperBox: (paperId) => this.handleAddToPaperBox(paperId, paper)
         });
+        
+        // 注册控件组件到UI管理器
+        this.uiManager.registerControlsComponent(paper.id, controls);
         
         // 创建摘要容器
         const summaryContainer = new SummaryContainer(paper.id, paper.element);
@@ -228,8 +300,31 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
       
       return true;
     } catch (error) {
-      console.error('Failed to inject UI:', error);
+      logger.error('Failed to inject UI:', error);
       return false;
+    }
+  }
+
+  /**
+   * 处理添加到论文盒的点击事件
+   * @param {string} paperId - 论文ID
+   * @param {Object} paper - 论文对象
+   */
+  async handleAddToPaperBox(paperId, paper) {
+    if (!this.uiManager) {
+      logger.error('UI Manager not initialized');
+      return;
+    }
+    
+    // 调用UI管理器的handleAddPaper方法添加论文
+    await this.uiManager.handleAddPaper(paper);
+    
+    // 获取PaperControls实例并显示成功状态
+    const controlsInstance = this.uiManager.getControlsComponent(paperId);
+    if (controlsInstance && controlsInstance.showAddSuccess) {
+      controlsInstance.showAddSuccess();
+    } else {
+      logger.warn(`未找到论文 ${paperId} 的控件实例`);
     }
   }
 
@@ -253,13 +348,16 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
         });
       
       if (!allVersionsLink) {
-        console.log('No "All versions" link found');
+        logger.log('No "All versions" link found');
         return null;
       }
       
-      console.log("Found all versions link:", allVersionsLink.href);
+      logger.log("Found all versions link:", allVersionsLink.href);
+      
+      // 保存所有版本的URL
+      const allVersionsUrl = allVersionsLink.href;
 
-      const response = await fetch(allVersionsLink.href);
+      const response = await fetch(allVersionsUrl);
       const text = await response.text();
       const parser = new DOMParser();
       const doc = parser.parseFromString(text, 'text/html');
@@ -271,7 +369,12 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
           if (link.href.includes('arxiv.org')) {
             const extractor = this.extractorFactory.getAdapter(link.href);
             if (extractor) {
-              return await extractor.extractMetadata();
+              const metadata = await extractor.extractMetadata();
+              // 添加allVersionsUrl属性
+              if (metadata) {
+                metadata.allVersionsUrl = allVersionsUrl;
+              }
+              return metadata;
             }
           }
         }
@@ -279,7 +382,7 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
       
       return null;
     } catch (error) {
-      console.error('Error extracting paper from all versions:', error);
+      logger.error('Error extracting paper from all versions:', error);
       return null;
     }
   }

@@ -55,7 +55,8 @@
         "css/*",
         "images/*", 
         "icons/*",
-        "content/ui/styles/*"
+        "content/ui/styles/*",
+        "content/ui/icons/*"
       ],
       "matches": ["<all_urls>"]
     }

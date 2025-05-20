@@ -4,370 +4,123 @@
  * 扩展的后台服务脚本，处理跨页面数据和API调用
  */
 
+// 导入存储服务
+// import { storage } from '../utils/storage.js'; // 由 configManager 和 paperBoxManager 等内部使用
+import { notificationService } from './services/notificationService.js';
+import { contextMenuService } from './services/contextMenuService.js';
+import { configManager } from './features/configManager.js'; // 新增导入
+import { logger } from './utils/logger.js'; // 导入 logger
+import { paperBoxManager } from './features/paperBoxManager.js'; // 新增导入
+import { messageDispatcher } from './services/messageDispatcher.js'; // 新增导入
+// import { paperMetadataService } from './features/paperMetadataService.js'; // 不再直接被 background.js 中的遗留函数使用
+
 // 存储摘要、分类和下载的论文
-const storedData = {
-  papers: {},
-  summaries: {},
-  downloads: {}
-};
+// const storedData = {
+//   // summaries: {}, // 由 summarizationHandler 管理
+//   downloads: {}
+//   // paperBox: {} // 由 paperBoxManager 管理
+// };
 
 // 导入LLM提供商工厂(将在实际实现中导入)
 // import { getLLMProvider } from '../api/llmProviders/index.js';
 
 // 初始化配置
-let config = {
-  llm: {
-    provider: 'openai',
-    model: 'gpt-3.5-turbo',
-    apiKey: ''
-  },
-  summarization: {
-    categories: [
-      { id: 'methodology', name: 'Methodology', enabled: true },
-      { id: 'findings', name: 'Key Findings', enabled: true },
-      { id: 'limitations', name: 'Limitations', enabled: true },
-      { id: 'futureWork', name: 'Future Work', enabled: true }
-    ]
-  },
-  platforms: {
-    googleScholar: { enabled: true },
-    ieee: { enabled: true },
-    acm: { enabled: true },
-    arxiv: { enabled: true }
+// let config = { ... }; // 由 configManager 管理
+
+// 背景脚本启动时立即加载数据
+(async () => {
+  logger.log('[BG_TRACE] IIFE: Service Worker 开始启动流程...');
+  try {
+    // 初始化配置管理器 (加载配置)
+    await configManager.loadInitialConfig();
+    
+    // 初始化论文盒管理器 (加载论文盒数据)
+    await paperBoxManager.loadInitialPaperBoxData(); 
+    
+    // paperMetadataService, summarizationHandler, downloadHandler 
+    // 目前是按需在 messageDispatcher 中调用，它们内部管理自己的内存缓存，
+    // 如果需要持久化或启动时加载，它们的模块内部需要添加类似 loadInitialData 的方法。
+    // 对于当前的模拟实现（内存缓存），它们不需要在启动时执行特定加载。
+
+    // 初始化上下文菜单
+    contextMenuService.initializeContextMenus();
+    
+    // 初始化消息监听器 (它将使用所有已配置的 handlers/managers)
+    messageDispatcher.initializeMessageListener();
+    
+    logger.log('[BG_TRACE] IIFE: Service Worker 初始化完成。所有核心服务已启动。'); 
+  } catch (error) {
+    logger.error('[BG_TRACE] IIFE: Service Worker 初始化过程中发生严重错误:', error);
   }
-};
+})();
 
 // 当扩展安装或更新时初始化
-chrome.runtime.onInstalled.addListener((details) => {
-  // 加载配置
-  loadConfig().then(() => {
-    console.log('配置已加载，扩展已初始化');
-  });
+chrome.runtime.onInstalled.addListener(async (details) => {
+  logger.log('[BG_TRACE] onInstalled: 事件触发，原因:', details.reason);
   
-  // 创建右键菜单
-  createContextMenu();
-});
+  // 确保上下文菜单在安装/更新时设置 (initializeContextMenus 内部处理重复移除)
+  // contextMenuService.initializeContextMenus();
 
-// 创建右键菜单项
-function createContextMenu() {
-  // 移除任何现有的菜单项，以避免重复
-  chrome.contextMenus.removeAll(() => {
-    // 创建打开设置页面的菜单项
-    chrome.contextMenus.create({
-      id: 'open-settings',
-      title: '打开设置页面',
-      contexts: ['action'] // 仅在扩展图标上显示
-    });
-    
-    console.log('右键菜单已创建');
-  });
-}
-
-// 处理右键菜单点击事件
-chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === 'open-settings') {
-    // 打开设置页面
-    chrome.runtime.openOptionsPage();
+  if (details.reason === 'install') {
+    logger.log('[BG_TRACE] onInstalled: 插件首次安装。');
+    // configManager.loadInitialConfig() 在 IIFE 中已处理首次保存默认配置。
+    // paperBoxManager.loadInitialPaperBoxData() (或 clearAllPapers) 在 IIFE 或 onInstalled 中确保了初始状态。
+    // 如果 clearAllPapers 不是在 loadInitialPaperBoxData 内部隐式完成的，可以显式调用：
+    // await paperBoxManager.clearAllPapers(); // 确保首次安装时论文盒为空并保存
+  } else if (details.reason === 'update') {
+    logger.log('[BG_TRACE] onInstalled: 插件已更新。');
+    // 配置和数据已在 IIFE 中的 loadInitial... 调用中处理。
+    // 如果更新时需要特定逻辑（例如数据迁移），应在此处添加。
   }
+  logger.log('[BG_TRACE] onInstalled: 处理完毕。');
 });
 
 // 加载存储的配置
-async function loadConfig() {
-  try {
-    const result = await chrome.storage.local.get('config');
-    if (result.config) {
-      config = { ...config, ...result.config };
-      console.log('配置已加载', config);
-    }
-  } catch (error) {
-    console.error('加载配置失败:', error);
-  }
-}
+// async function loadConfig() { ... } // 移除，由 configManager 处理
+
+// 加载论文盒数据
+// async function loadPaperBoxData() { ... } // 移除
+
+// 保存论文盒数据
+// async function savePaperBoxData() { ... } // 移除
 
 // 保存配置到存储
-async function saveConfig(newConfig) {
-  try {
-    config = { ...config, ...newConfig };
-    await chrome.storage.local.set({ config });
-    console.log('配置已保存', config);
-  } catch (error) {
-    console.error('保存配置失败:', error);
-  }
-}
+// async function saveConfig(newConfig) { ... } // 移除，由 configManager 处理
 
 // 监听来自内容脚本或弹出窗口的消息
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log('收到消息:', message, '来自:', sender);
-  
-  if (!message || !message.action) {
-    sendResponse({ success: false, error: '无效的消息格式' });
-    return;
-  }
-  
-  // 处理各种操作
-  handleAction(message, sender)
-    .then(response => sendResponse(response))
-    .catch(error => {
-      console.error('处理消息失败:', error);
-      sendResponse({ 
-        success: false, 
-        error: error.message || '未知错误' 
-      });
-    });
-  
-  // 表示我们将异步回应
-  return true;
-});
+// chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+//   logger.log('[BG_MSG] Received message:', message, 'from:', sender.tab ? `tab ${sender.tab.id}` : 'extension context');
+//   
+//   if (!message || !message.action) {
+//     logger.error('[BG_MSG] Invalid message format received.');
+//     sendResponse({ success: false, error: '无效的消息格式' });
+//     return true; 
+//   }
+//   
+//   handleAction(message, sender)
+//     .then(response => {
+//       logger.log('[BG_MSG] Sending response for action', message.action, ':', response);
+//       sendResponse(response);
+//     })
+//     .catch(error => {
+//       logger.error('[BG_MSG] Error handling action', message.action, ':', error);
+//       sendResponse({ success: false, error: error.message || '未知错误' });
+//     });
+//   
+//   return true; // 表示我们将异步回应
+// });
 
 // 处理不同类型的操作
-async function handleAction(message, sender) {
-  const { action, data } = message;
-  
-  switch (action) {
-    case 'getConfig':
-      return { success: true, config };
-      
-    case 'updateConfig':
-      await saveConfig(data);
-      // 通知所有内容脚本配置更新
-      notifyConfigUpdate(data);
-      return { success: true };
-      
-    case 'fetchPageContent':
-      return await fetchPageContent(data.url);
-      
-    case 'summarizePaper':
-      return await summarizePaper(data.paper, data.options);
-      
-    case 'batchSummarizePapers':
-      return await batchSummarizePapers(data.papers, data.options);
-      
-    case 'downloadPDF':
-      return await downloadPDF(data.paper);
-      
-    case 'batchDownloadPapers':
-      return await batchDownloadPapers(data.papers);
-      
-    case 'getStoredSummaries':
-      return { success: true, summaries: Object.values(storedData.summaries) };
-      
-    case 'getPaperDetails':
-      return await getPaperDetails(data.paperId);
-      
-    case 'openPopup':
-      // 在实际实现中会处理打开弹出窗口并跳转到特定标签
-      return { success: true };
-      
-    case 'openSettings':
-      // 打开设置页面
-      chrome.runtime.openOptionsPage();
-      return { success: true };
-      
-    default:
-      throw new Error(`未知操作: ${action}`);
-  }
-}
+// async function handleAction(message, sender) { ... } // 移除，由 messageDispatcher 处理
 
-// 通知所有内容脚本配置已更新
-async function notifyConfigUpdate(newConfig) {
-  try {
-    const tabs = await chrome.tabs.query({});
-    for (const tab of tabs) {
-      chrome.tabs.sendMessage(tab.id, {
-        action: 'updateConfig',
-        data: newConfig
-      }).catch(() => {
-        // 忽略没有内容脚本的标签页错误
-      });
-    }
-  } catch (error) {
-    console.error('通知配置更新失败:', error);
-  }
-}
+// 以下函数暂时保留在 background.js 并导出，
+// 因为 messageDispatcher.js 目前直接从这里导入它们。
+// 它们将在后续步骤中被迁移到各自的特性模块。
 
-// 获取论文详情
-async function getPaperDetails(paperId) {
-  if (storedData.papers[paperId]) {
-    return {
-      success: true,
-      paper: storedData.papers[paperId]
-    };
-  }
-  
-  return {
-    success: false,
-    error: '未找到论文'
-  };
-}
+// export async function getPaperDetails(paperId) { ... } // 移除，已迁移到 paperMetadataService
 
-// 摘要单篇论文 - 模拟实现
-async function summarizePaper(paper, options) {
-  console.log('开始摘要论文:', paper.title, '选项:', options);
-  
-  try {
-    // 存储论文以供后续参考
-    storedData.papers[paper.id] = paper;
-    
-    // 模拟摘要生成过程
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // 创建摘要
-    const summary = {
-      paperId: paper.id,
-      summary: `这是${paper.title}的摘要。在实际实现中，这将通过LLM生成。`,
-      createdAt: new Date().toISOString()
-    };
-    
-    // 如果需要分类
-    if (options?.categorize) {
-      summary.categories = {
-        methodology: { score: 4, explanation: '该论文的方法论很完善。' },
-        findings: { score: 5, explanation: '论文中的发现很重要。' },
-        limitations: { score: 3, explanation: '论文没有充分讨论局限性。' },
-        futureWork: { score: 4, explanation: '对未来工作的展望很好。' }
-      };
-    }
-    
-    // 存储摘要
-    storedData.summaries[paper.id] = summary;
-    
-    return {
-      success: true,
-      summary: summary.summary,
-      categories: summary.categories
-    };
-  } catch (error) {
-    console.error('论文摘要生成失败:', error);
-    return {
-      success: false,
-      error: error.message || '论文摘要生成失败'
-    };
-  }
-}
+// export async function findPDFUrl(paper) { ... }
+// export async function downloadPDF(paper) { ... }
+// export async function batchDownloadPapers(papers) { ... }
 
-// 批量摘要多篇论文 - 模拟实现
-async function batchSummarizePapers(papers, options) {
-  console.log('开始批量摘要论文:', papers.length, '篇');
-  
-  try {
-    const results = [];
-    
-    for (const paper of papers) {
-      const result = await summarizePaper(paper, options);
-      if (result.success) {
-        results.push({
-          paperId: paper.id,
-          title: paper.title,
-          summary: result.summary,
-          categories: result.categories
-        });
-      }
-    }
-    
-    return {
-      success: true,
-      results
-    };
-  } catch (error) {
-    console.error('批量摘要失败:', error);
-    return {
-      success: false,
-      error: error.message || '批量摘要失败'
-    };
-  }
-}
-
-// 下载单篇论文 - 模拟实现
-async function downloadPDF(paper) {
-  console.log('开始下载论文:', paper.title);
-  
-  try {
-    // 在实际实现中，会找到PDF URL并下载
-    const pdfUrl = await findPDFUrl(paper);
-    
-    if (!pdfUrl) {
-      throw new Error('未找到PDF链接');
-    }
-    
-    // 模拟下载过程
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // 记录下载
-    storedData.downloads[paper.id] = {
-      paperId: paper.id,
-      title: paper.title,
-      downloadedAt: new Date().toISOString(),
-      url: pdfUrl
-    };
-    
-    return {
-      success: true,
-      message: `已下载论文 "${paper.title}"`
-    };
-  } catch (error) {
-    console.error('下载论文失败:', error);
-    return {
-      success: false,
-      error: error.message || '下载论文失败'
-    };
-  }
-}
-
-// 批量下载多篇论文 - 模拟实现
-async function batchDownloadPapers(papers) {
-  console.log('开始批量下载论文:', papers.length, '篇');
-  
-  try {
-    const results = [];
-    
-    for (const paper of papers) {
-      const result = await downloadPDF(paper);
-      results.push({
-        paperId: paper.id,
-        title: paper.title,
-        success: result.success,
-        message: result.success ? result.message : result.error
-      });
-    }
-    
-    return {
-      success: true,
-      results
-    };
-  } catch (error) {
-    console.error('批量下载失败:', error);
-    return {
-      success: false,
-      error: error.message || '批量下载失败'
-    };
-  }
-}
-
-// 模拟查找PDF URL
-async function findPDFUrl(paper) {
-  // 模拟,实际会从paper.url访问页面解析获取PDF链接
-  return `https://example.com/papers/${paper.id}.pdf`;
-}
-
-// 获取页面内容 - 模拟实现
-async function fetchPageContent(url) {
-  console.log('获取页面内容:', url);
-  
-  try {
-    // 在实际实现中,会向url发送请求并解析内容
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    return {
-      success: true,
-      content: '模拟页面内容'
-    };
-  } catch (error) {
-    console.error('获取页面内容失败:', error);
-    return {
-      success: false,
-      error: error.message || '获取页面内容失败'
-    };
-  }
-}
-
-console.log('Research Summarizer 后台服务已启动'); 
+logger.log('[BG_TRACE] Research Summarizer Background Service Worker 脚本已执行完毕 (顶层解析)。'); 

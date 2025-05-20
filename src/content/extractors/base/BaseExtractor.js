@@ -3,7 +3,7 @@
  * Base class for extracting information from academic paper pages
  */
 
-import { createEmptyPaper } from '../../../models/Paper';
+import { Paper } from '../../../models/Paper';
 
 export default class BaseExtractor {
   constructor() {
