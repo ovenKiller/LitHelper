@@ -209,26 +209,6 @@ async function fetchPaperDetailsDefault(paper) {
   try {
     // 根据可用信息尝试不同的获取策略
     
-    // 1. 如果有DOI，可以尝试从DOI API获取
-    if (paper.doi) {
-      // TODO: 实现DOI API调用
-      // 这里只是预留，实际项目中应实现
-    }
-    
-    // 2. 如果有arXiv ID，可以尝试从arXiv API获取
-    if (paper.urls && paper.urls.some(url => url.includes('arxiv.org'))) {
-      // TODO: 实现arXiv API调用
-      // 这里只是预留，实际项目中应实现
-    }
-    
-    // 3. 使用标题和作者进行搜索
-    if (paper.title && paper.authors && paper.authors.length > 0) {
-      // TODO: 实现搜索API调用
-      // 这里只是预留，实际项目中应实现
-    }
-    
-    // 如果没有完成实现具体策略，返回原始论文对象
-    // 这样至少能确保基本信息不丢失
     return {
       success: true,
       paper: paper

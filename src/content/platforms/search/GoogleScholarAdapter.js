@@ -13,6 +13,9 @@ import PaperControls from '../../ui/components/PaperControls';
 import SummaryContainer from '../../ui/components/SummaryContainer';
 import { Paper } from '../../../models/Paper';
 import { logger } from '../../../background/utils/logger';
+import { parseHTML } from '../../../api/aiHtmlParser';
+
+
 class GoogleScholarAdapter extends SearchPlatformAdapter {
   constructor() {
     super();
@@ -49,30 +52,20 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
     return document.querySelector('#gs_res_ccl_mid') || document.querySelector('#gs_res_ccl');
   }
 
-  /**
-   * 获取搜索结果中的论文数量
-   * @returns {number}
-   */
-  getPaperCount() {
-    const countText = document.querySelector('#gs_ab_md .gs_ab_mdw')?.textContent;
-    if (!countText) return 0;
-    
-    const match = countText.match(/About\s+([\d,]+)\s+results/);
-    return match ? parseInt(match[1].replace(/,/g, '')) : 0;
-  }
 
   /**
-   * 获取当前论文在搜索结果中的位置
-   * @returns {number}
+   * 从当前页面提取论文信息
+   * @returns {Promise<Array>} 提取的论文信息
    */
-  getCurrentPaperNumber() {
-    const currentItem = document.querySelector('.gs_ri.gs_or.gs_scl');
-    if (!currentItem) return 0;
+  async extractPapers() {
+    parseDocument(document, "");
+    const container = this.getResultsContainer();
+    if (!container) return [];
     
-    const items = Array.from(document.querySelectorAll('.gs_ri.gs_or.gs_scl'));
-    return items.indexOf(currentItem) + 1;
+    const resultItems = container.querySelectorAll('.gs_r.gs_or.gs_scl') || 
+                        container.querySelectorAll('.gs_ri');
+    return this.extractPapersFromElements(resultItems, 'google_scholar', 'gs');
   }
-
   /**
    * 从搜索结果中提取论文信息
    * @param {NodeList|Element[]} resultItems - 论文结果元素
@@ -120,18 +113,7 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
     return papers;
   }
 
-  /**
-   * 从当前页面提取论文信息
-   * @returns {Promise<Array>} 提取的论文信息
-   */
-  async extractPapers() {
-    const container = this.getResultsContainer();
-    if (!container) return [];
-    
-    const resultItems = container.querySelectorAll('.gs_r.gs_or.gs_scl') || 
-                        container.querySelectorAll('.gs_ri');
-    return this.extractPapersFromElements(resultItems, 'google_scholar', 'gs');
-  }
+
 
   /**
    * 从HTML内容中提取论文信息
