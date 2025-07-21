@@ -4,7 +4,7 @@
  * A floating button component that can be used across different platforms
  */
 
-import { logger } from '../../../background/utils/logger.js';
+import { logger } from '../../../util/logger.js';
 
 class FloatingButton {
   constructor() {

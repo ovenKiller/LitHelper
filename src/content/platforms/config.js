@@ -2,38 +2,40 @@
  * 平台配置管理
  */
 
+import { PLATFORM_KEYS, PLATFORM_TYPES } from '../../constants';
+
 export const PLATFORM_CONFIG = {
   // 搜索平台配置
-  search: {
-    googleScholar: {
+  [PLATFORM_TYPES.SEARCH]: {
+    [PLATFORM_KEYS.GOOGLE_SCHOLAR]: {
       patterns: ['scholar.google.com'],
       extractors: ['searchResults', 'citations', 'versions']
     },
-    semanticScholar: {
+    [PLATFORM_KEYS.SEMANTIC_SCHOLAR]: {
       patterns: ['semanticscholar.org'],
       extractors: ['searchResults', 'citations', 'references']
     }
   },
   
   // 论文库配置
-  repository: {
-    arxiv: {
+  [PLATFORM_TYPES.REPOSITORY]: {
+    [PLATFORM_KEYS.ARXIV]: {
       patterns: ['arxiv.org'],
       extractors: ['metadata', 'pdf', 'citations', 'versions']
     },
-    ieee: {
+    [PLATFORM_KEYS.IEEE]: {
       patterns: ['ieeexplore.ieee.org'],
       extractors: ['metadata', 'pdf', 'citations', 'references']
     },
-    scienceDirect: {
+    [PLATFORM_KEYS.SCIENCE_DIRECT]: {
       patterns: ['sciencedirect.com'],
       extractors: ['metadata', 'pdf', 'citations', 'references']
     },
-    springer: {
+    [PLATFORM_KEYS.SPRINGER]: {
       patterns: ['link.springer.com'],
       extractors: ['metadata', 'pdf', 'citations', 'references']
     },
-    acm: {
+    [PLATFORM_KEYS.ACM]: {
       patterns: ['dl.acm.org'],
       extractors: ['metadata', 'pdf', 'citations', 'references']
     }

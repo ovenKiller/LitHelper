@@ -6,10 +6,11 @@
  * the appropriate platform adapter.
  */
 
-import PlatformAdapter from './platforms/base/PlatformAdapter';
-import GoogleScholarAdapter from './platforms/search/GoogleScholarAdapter';
-import UIManager from './ui/UIManager';
-import { logger } from '../background/utils/logger.js';
+import PlatformAdapter from './platforms/base/PlatformAdapter.js';
+import GoogleScholarAdapter from './platforms/search/GoogleScholarAdapter.js';
+import UIManager from './ui/UIManager.js';
+import { logger } from '../util/logger.js';
+import { parseDocumentToXMLStructure } from '../util/htmlParser.js';
 
 /**
  * Main class for content script
@@ -29,7 +30,6 @@ class ContentScript {
   async initialize() {
     try {
       logger.log('Research Summarizer content script initializing...');
-      
       
       this.adapter = this.findAdapter();
       if (this.adapter) {
@@ -54,7 +54,6 @@ class ContentScript {
       logger.error('Failed to initialize content script:', error);
     }
   }
-  
   findAdapter() {
     for (const adapter of this.platformAdapters) {
       if (adapter.isPageSupported()) {
@@ -64,8 +63,6 @@ class ContentScript {
     return null;
   }
   
-
-
   setupObserver() {
     if (!this.adapter) return;
     

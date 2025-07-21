@@ -1,6 +1,7 @@
 import { getPlatformType, getPlatformName } from './config';
 import GoogleScholarAdapter from './search/GoogleScholarAdapter';
-import { logger } from '../../background/utils/logger.js';
+import { logger } from '../../util/logger.js';
+import { PLATFORM_KEYS } from '../../constants.js';
 
 class AdapterFactory {
   /**
@@ -48,7 +49,7 @@ class AdapterFactory {
    */
   static async getSearchAdapter(platform) {
     switch (platform) {
-      case 'googleScholar':
+      case PLATFORM_KEYS.GOOGLE_SCHOLAR:
         return new GoogleScholarAdapter();
       // 添加其他搜索平台适配器
       default:
@@ -63,7 +64,7 @@ class AdapterFactory {
    */
   static async getRepositoryAdapter(platform) {
     switch (platform) {
-      case 'arxiv':
+      case PLATFORM_KEYS.ARXIV:
         return new ArxivAdapter();
       // 添加其他论文库适配器
       default:

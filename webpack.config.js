@@ -9,7 +9,8 @@ module.exports = {
     background: './src/background/background.js',
     content: './src/content/content.js',
     popup: './src/popup/popup.js', // Add this if you have a popup.js file
-    settings: './src/option/SettingsController.js', // 配置设置页面的入口（已重命名为MVC架构中的Controller）
+    settings: './src/option/index.js', // Changed from SettingsController.js
+    offscreen: './src/offscreen/offscreen.js'
   },
   output: {
     path: path.resolve(__dirname, 'dist'),
@@ -24,7 +25,19 @@ module.exports = {
         use: {
           loader: 'babel-loader',
           options: {
-            presets: ['@babel/preset-env']
+            presets: ['@babel/preset-env'],
+            plugins: [
+              [
+                '@babel/plugin-transform-runtime',
+                {
+                  absoluteRuntime: false,
+                  corejs: false,
+                  helpers: true,
+                  regenerator: true,
+                  useESModules: false
+                }
+              ]
+            ]
           }
         }
       },
@@ -48,7 +61,8 @@ module.exports = {
         { from: 'src/assets/icons', to: './icons' },
         { from: 'src/content/ui/styles', to: './content/ui/styles' },
         { from: 'src/content/ui/icons', to: './icons' },
-        { from: 'src/option/settings.css', to: './' }
+        { from: 'src/option/settings.css', to: './' },
+        { from: 'src/offscreen/offscreen.html', to: './' }
       ]
     }),
     new HtmlWebpackPlugin({

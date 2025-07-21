@@ -7,9 +7,10 @@
 import FloatingButton from './components/FloatingButton';
 import PopupWindow from './components/PopupWindow';
 import PaperControls from './components/PaperControls';
-import { storage } from '../../utils/storage';
-import { Paper } from '../../models/Paper'; // Import Paper class
-import { logger } from '../../background/utils/logger.js';
+import { storage } from '../../util/storage.js';
+import { Paper } from '../../model/Paper.js'; // Import Paper class
+import { logger } from '../../util/logger.js';
+import { MessageActions, sendMessageToBackend, addContentScriptMessageListener } from '../../util/message.js';
 
 class UIManager {
   constructor() {
@@ -31,29 +32,31 @@ class UIManager {
     try {
       logger.log("[UI_TRACE] initialize: UI manager对象初始化");
       
-      // 调试信息：开始加载存储数据
-      logger.log("[UI_TRACE] initialize: 开始从后台脚本加载论文数据...");
+      // 🚀 并行化初始化：将不相互依赖的操作同时执行
+      logger.log("[UI_TRACE] initialize: 开始并行初始化操作...");
       
-      // 从后台脚本加载论文数据，而不是直接从存储加载
-      await this.loadPapersFromBackground();
-      
-      // 初始化弹出窗口
-      await this.initializePopupWindow();
+      const [papersData] = await Promise.all([
+        // 网络请求：从后台加载论文数据（异步，可能耗时）
+        // this.loadPapersFromBackground(),
+        
+        // DOM操作：初始化弹出窗口（同步，较快）
+        this.initializePopupWindow(),
+        
+        // DOM操作：初始化悬浮按钮（同步，较快）
+        this.initializeFloatingButton(),
+        
+        // 平台特定组件初始化（通常较快）
+        this.initializePlatformComponents(platform),
+        
+        // 消息监听器设置（同步，很快）
+        this.setupMessageListener()
+      ]);
 
-      // 初始化平台特定组件
-      await this.initializePlatformComponents(platform);
-
-      // 初始化悬浮按钮
-      await this.initializeFloatingButton();
-
-      // 更新悬浮按钮的论文数量
+      // 更新悬浮按钮的论文数量（依赖于论文数据，所以放在并行操作完成后）
       if (this.floatingButton) {
         this.floatingButton.setPaperCount(this.papers.size);
         logger.log(`[UI_TRACE] initialize: 已更新悬浮按钮论文数量: ${this.papers.size}`);
       }
-      
-      // 监听后台脚本的论文盒更新消息
-      this.setupMessageListener();
       
       logger.log("[UI_TRACE] initialize: UI初始化完成");
     } catch (error) {
@@ -76,33 +79,32 @@ class UIManager {
         resolve(); // 继续执行后续流程
       }, 3000); // 3秒超时
       
-      chrome.runtime.sendMessage({ action: 'getPaperBoxData' }, (response) => {
-        clearTimeout(timeoutId); // 清除超时
-        
-        // 打印更多诊断信息
-        logger.log('[UI_TRACE] loadPapersFromBackground: 后台脚本响应:', response || '无响应', 
-                   '错误:', chrome.runtime.lastError || '无错误');
-        
-        if (chrome.runtime.lastError) {
-          logger.error('[UI_TRACE] loadPapersFromBackground: 获取论文盒数据失败:', chrome.runtime.lastError);
-          this.papers = new Map(); // 初始化为空Map
-          resolve();
-          return;
-        }
-        
-        if (response && response.success && response.papers) {
-          logger.log('[UI_TRACE] loadPapersFromBackground: 从后台脚本接收到论文盒数据:', response.papers);
-          this.papers = new Map(Object.entries(response.papers));
-          logger.log(`[UI_TRACE] loadPapersFromBackground: 已加载 ${this.papers.size} 篇论文到论文盒`);
-          if (this.papers.size > 0) {
-            logger.log("[UI_TRACE] loadPapersFromBackground: 论文列表:", Array.from(this.papers.values()).map(p => p.title));
+      sendMessageToBackend(MessageActions.GET_PAPER_BOX_DATA)
+        .then(response => {
+          clearTimeout(timeoutId); // 清除超时
+          
+          // 打印更多诊断信息
+          logger.log('[UI_TRACE] loadPapersFromBackground: 后台脚本响应:', response || '无响应');
+          
+          if (response && response.success && response.papers) {
+            logger.log('[UI_TRACE] loadPapersFromBackground: 从后台脚本接收到论文盒数据:', response.papers);
+            this.papers = new Map(Object.entries(response.papers));
+            logger.log(`[UI_TRACE] loadPapersFromBackground: 已加载 ${this.papers.size} 篇论文到论文盒`);
+            if (this.papers.size > 0) {
+              logger.log("[UI_TRACE] loadPapersFromBackground: 论文列表:", Array.from(this.papers.values()).map(p => p.title));
+            }
+          } else {
+            logger.warn('[UI_TRACE] loadPapersFromBackground: 后台脚本没有返回有效的论文盒数据');
+            this.papers = new Map(); // 初始化为空Map
           }
-        } else {
-          logger.warn('[UI_TRACE] loadPapersFromBackground: 后台脚本没有返回有效的论文盒数据');
-          this.papers = new Map(); // 初始化为空Map
-        }
-        resolve();
-      });
+          resolve();
+        })
+        .catch(error => {
+            clearTimeout(timeoutId);
+            logger.error('[UI_TRACE] loadPapersFromBackground: 获取论文盒数据失败:', error);
+            this.papers = new Map(); // 初始化为空Map
+            resolve();
+        });
     });
   }
   
@@ -110,15 +112,15 @@ class UIManager {
    * 设置消息监听器以接收后台脚本的更新
    */
   setupMessageListener() {
-    logger.log("[UI_TRACE] setupMessageListener: 设置消息监听器");
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-      logger.log('[UI_TRACE] setupMessageListener: 收到消息:', message?.action);
+    return new Promise((resolve) => {
+      logger.log("[UI_TRACE] setupMessageListener: 设置消息监听器");
       
-      if (message.action === 'paperBoxUpdated' && message.data && message.data.papers) {
+      const handlers = new Map();
+      handlers.set(MessageActions.PAPER_BOX_UPDATED, (data, sender, sendResponse) => {
         logger.log('[UI_TRACE] setupMessageListener: 收到论文盒更新消息, 数据数量:', 
-                   Object.keys(message.data.papers).length);
+                   Object.keys(data.papers).length);
         
-        this.papers = new Map(Object.entries(message.data.papers));
+        this.papers = new Map(Object.entries(data.papers));
         
         // 更新悬浮按钮的论文数量
         if (this.floatingButton) {
@@ -138,8 +140,10 @@ class UIManager {
           );
         }
         sendResponse({ success: true });
-      }
-      return true;
+      });
+
+      addContentScriptMessageListener(handlers);
+      resolve(); // 立即resolve，因为消息监听器设置是同步的
     });
   }
 
@@ -214,21 +218,16 @@ class UIManager {
     logger.log("[UI_TRACE] handleAddPaper: 添加论文到论文盒:", paper.title);
     
     // 发送消息给后台脚本，而不是直接操作存储
-    chrome.runtime.sendMessage(
-      { action: 'addPaperToBox', data: { paper } },
-      (response) => {
-        if (chrome.runtime.lastError) {
-          logger.error('[UI_TRACE] handleAddPaper: 添加论文到论文盒失败:', chrome.runtime.lastError);
-          return;
-        }
-        
-        if (response && response.success) {
-          logger.log(`[UI_TRACE] handleAddPaper: 论文已成功添加，当前共有 ${response.paperCount} 篇论文`);
-        } else {
-          logger.error('[UI_TRACE] handleAddPaper: 添加论文到论文盒失败:', response?.error || '未知错误');
-        }
+    try {
+      const response = await sendMessageToBackend(MessageActions.ADD_PAPER_TO_BOX, { paper });
+      if (response && response.success) {
+        logger.log(`[UI_TRACE] handleAddPaper: 论文已成功添加，当前共有 ${response.paperCount} 篇论文`);
+      } else {
+        logger.error('[UI_TRACE] handleAddPaper: 添加论文到论文盒失败:', response?.error || '未知错误');
       }
-    );
+    } catch (error) {
+        logger.error('[UI_TRACE] handleAddPaper: 添加论文到论文盒失败:', error);
+    }
   }
 
   /**
@@ -297,46 +296,42 @@ class UIManager {
    * @returns {Promise<void>}
    */
   async handleRemovePaper(paperId) {
+    logger.log(`[UI_TRACE] handleRemovePaper: 准备从UI中移除论文 ${paperId}`);
+
+    // 发送消息到后台移除论文
     try {
-      logger.log('[UI_TRACE] handleRemovePaper: 开始删除论文:', paperId);
+      const response = await sendMessageToBackend(MessageActions.REMOVE_PAPER_FROM_BOX, { paperId });
+      if (response && response.success) {
+        logger.log(`[UI_TRACE] handleRemovePaper: 后台成功移除论文 ${paperId}`);
+        // UI的更新会通过PAPER_BOX_UPDATED消息触发，所以这里不需要手动更新
+      } else {
+        logger.error(`[UI_TRACE] handleRemovePaper: 后台移除论文 ${paperId} 失败:`, response?.error);
+      }
+    } catch (error) {
+      logger.error(`[UI_TRACE] handleRemovePaper: 发送移除论文消息失败 ${paperId}:`, error);
+    }
+
+    // 可以在这里立即从UI上移除，以提高响应速度
+    if (this.papers.has(paperId)) {
+      this.papers.delete(paperId);
+      this.selectedPapers.delete(paperId); // 如果被选中，也从选中集合中移除
       
-      if (!paperId) {
-        logger.error('[UI_TRACE] handleRemovePaper: 论文ID无效');
-        throw new Error('无效的论文ID');
+      // 更新悬浮按钮计数
+      if (this.floatingButton) {
+        this.floatingButton.setPaperCount(this.papers.size);
       }
 
-      // 发送消息给后台脚本，而不是直接操作存储
-      return new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage(
-          { action: 'removePaperFromBox', data: { paperId } },
-          (response) => {
-            if (chrome.runtime.lastError) {
-              logger.error('[UI_TRACE] handleRemovePaper: 从论文盒中移除论文失败:', chrome.runtime.lastError);
-              reject(chrome.runtime.lastError);
-              return;
-            }
-            
-            if (response && response.success) {
-              logger.log(`[UI_TRACE] handleRemovePaper: 论文已成功移除，当前共有 ${response.paperCount} 篇论文`);
-              
-              // 如果存在本地缓存，也要移除
-              if (this.papers && this.papers.has(paperId)) {
-                this.papers.delete(paperId);
-                logger.log(`[UI_TRACE] handleRemovePaper: 已从本地缓存移除论文 ${paperId}`);
-              }
-              
-              resolve(response);
-            } else {
-              const error = response?.error || '未知错误';
-              logger.error('[UI_TRACE] handleRemovePaper: 从论文盒中移除论文失败:', error);
-              reject(new Error(error));
-            }
-          }
+      // 如果弹窗可见，则更新列表
+      if (this.popupWindow && this.popupWindow.isVisible) {
+        this.popupWindow.updatePaperList(
+          Array.from(this.papers.values()),
+          (id) => this.handleSummarizeClick(id),
+          (id) => this.handleDownloadClick(id),
+          (id, selected) => this.handlePaperSelection(id, selected),
+          (id) => this.handleRemovePaper(id)
         );
-      });
-    } catch (error) {
-      logger.error('[UI_TRACE] handleRemovePaper: 删除论文过程中发生异常:', error);
-      throw error;
+      }
+      logger.log(`[UI_TRACE] handleRemovePaper: 已从UI中移除论文 ${paperId}`);
     }
   }
   
@@ -368,72 +363,32 @@ class UIManager {
    * @param {Object} platform - Platform adapter instance (optional)
    */
   async handleSummarizeClick(paperId, platform) {
+    logger.log(`[UI_TRACE] handleSummarizeClick: 论文ID: ${paperId}`);
+    
+    const paper = this.papers.get(paperId);
+    if (!paper) {
+      logger.error(`[UI_TRACE] handleSummarizeClick: 找不到论文: ${paperId}`);
+      return;
+    }
+
     try {
-      let paper;
-      
-      // Try to find paper in platform if provided
-      if (platform) {
-        const papers = await platform.extractPapers();
-        paper = papers.find(p => p.id === paperId);
-      }
-      
-      // If platform not provided or paper not found in platform papers,
-      // try to find it directly from the popup window (for papers added via "Add to Research Summarizer" button)
-      if (!paper && this.popupWindow) {
-        // Find paper in the popup window's currently displayed papers
-        const paperElement = this.popupWindow.element.querySelector(`[data-paper-id="${paperId}"]`);
-        if (paperElement) {
-          // Extract necessary data from the paper element
-          const titleElement = paperElement.querySelector('.rs-popup-paper-title');
-          const authorsElement = paperElement.querySelector('.rs-popup-paper-authors');
-          const yearElement = paperElement.querySelector('.rs-popup-paper-year');
-          
-          const paperData = {
-            id: paperId,
-            title: titleElement ? titleElement.textContent : 'Unknown Title',
-            authors: [],
-            publicationDate: yearElement ? yearElement.textContent : ''
-          };
-          if (authorsElement && authorsElement.textContent) {
-            paperData.authors = authorsElement.textContent.split(',').map(a => a.trim()).filter(a => a);
-          }
-          paper = new Paper(paperData);
-        }
-      }
-      
-      if (!paper) {
-        logger.error(`Paper with ID ${paperId} not found`);
-        return;
-      }
-      
-      // Show loading indicator
       this.showSummaryLoadingIndicator(paperId);
       
-      // Send message to background script to generate summary
-      chrome.runtime.sendMessage({
-        action: 'summarizePaper',
-        data: {
-          paper,
-          options: {
-            categorize: true
-          }
-        }
-      }, response => {
-        // Hide loading indicator
-        this.hideSummaryLoadingIndicator(paperId);
-        
-        if (response && response.success) {
-          // Show summary
-          this.showSummary(paperId, response.summary);
-        } else {
-          // Show error
-          this.showSummaryError(paperId, response?.error || 'Failed to generate summary');
-        }
-      });
+      logger.log("[UI_TRACE] handleSummarizeClick: 发送请求到 background.js", paper);
+      const response = await sendMessageToBackend(MessageActions.SUMMARIZE_PAPER, { paper });
+
+      if (response && response.success) {
+        logger.log(`[UI_TRACE] handleSummarizeClick: 收到 ${paperId} 的摘要`, response.summary);
+        this.showSummary(paperId, response.summary);
+      } else {
+        logger.error(`[UI_TRACE] handleSummarizeClick: 摘要生成失败 ${paperId}:`, response.error);
+        this.showSummaryError(paperId, response.error);
+      }
     } catch (error) {
-      logger.error('Error handling summarize click:', error);
-      this.hideSummaryLoadingIndicator(paperId);
+      logger.error(`[UI_TRACE] handleSummarizeClick: 摘要生成时发生错误 ${paperId}:`, error);
       this.showSummaryError(paperId, error.message);
+    } finally {
+      this.hideSummaryLoadingIndicator(paperId);
     }
   }
 
@@ -443,69 +398,32 @@ class UIManager {
    * @param {Object} platform - Platform adapter instance (optional)
    */
   async handleDownloadClick(paperId, platform) {
+    logger.log(`[UI_TRACE] handleDownloadClick: 论文ID: ${paperId}`);
+    
+    const paper = this.papers.get(paperId);
+    if (!paper) {
+      logger.error(`[UI_TRACE] handleDownloadClick: 找不到论文: ${paperId}`);
+      return;
+    }
+    
     try {
-      let paper;
-      
-      // Try to find paper in platform if provided
-      if (platform) {
-        const papers = await platform.extractPapers();
-        paper = papers.find(p => p.id === paperId);
-      }
-      
-      // If platform not provided or paper not found in platform papers,
-      // try to find it directly from the popup window (for papers added via "Add to Research Summarizer" button)
-      if (!paper && this.popupWindow) {
-        // Find paper in the popup window's currently displayed papers
-        const paperElement = this.popupWindow.element.querySelector(`[data-paper-id="${paperId}"]`);
-        if (paperElement) {
-          // Extract necessary data from the paper element
-          const titleElement = paperElement.querySelector('.rs-popup-paper-title');
-          const downloadButton = paperElement.querySelector(`.rs-download-btn[data-paper-id="${paperId}"]`);
-          
-          const paperData = {
-            id: paperId,
-            title: titleElement ? titleElement.textContent : 'Unknown Title',
-            pdfUrl: downloadButton && !downloadButton.disabled ? downloadButton.dataset.pdfUrl : null
-            // Authors and year are not strictly needed for download, but can be added for consistency if desired
-          };
-          paper = new Paper(paperData);
-        }
-      }
-      
-      if (!paper) {
-        logger.error(`Paper with ID ${paperId} not found`);
-        return;
-      }
-      
-      // If no PDF URL, show error
-      if (!paper.pdfUrl) {
-        this.showDownloadError(paperId, 'No PDF available for this paper');
-        return;
-      }
-      
-      // Show loading indicator
       this.showDownloadLoadingIndicator(paperId);
-      
-      // Send message to background script to download PDF
-      chrome.runtime.sendMessage({
-        action: 'downloadPDF',
-        data: { paper }
-      }, response => {
-        // Hide loading indicator
-        this.hideDownloadLoadingIndicator(paperId);
-        
-        if (response && response.success) {
-          // Show success
-          this.showDownloadSuccess(paperId);
-        } else {
-          // Show error
-          this.showDownloadError(paperId, response?.error || 'Failed to download PDF');
-        }
-      });
+      logger.log("[UI_TRACE] handleDownloadClick: 发送请求到 background.js", paper);
+
+      const response = await sendMessageToBackend(MessageActions.DOWNLOAD_PAPER, { paper });
+
+      if (response && response.success) {
+        logger.log(`[UI_TRACE] handleDownloadClick: 论文 ${paperId} 下载成功.`);
+        this.showDownloadSuccess(paperId);
+      } else {
+        logger.error(`[UI_TRACE] handleDownloadClick: 论文下载失败 ${paperId}:`, response.error);
+        this.showDownloadError(paperId, response.error);
+      }
     } catch (error) {
-      logger.error('Error handling download click:', error);
-      this.hideDownloadLoadingIndicator(paperId);
+      logger.error(`[UI_TRACE] handleDownloadClick: 论文下载时发生错误 ${paperId}:`, error);
       this.showDownloadError(paperId, error.message);
+    } finally {
+      this.hideDownloadLoadingIndicator(paperId);
     }
   }
 
@@ -514,41 +432,26 @@ class UIManager {
    * @param {Object} platform - Platform adapter instance
    */
   async handleSummarizeAll(platform) {
-    // Get all papers
-    // const papers = await platform.extractPapers();
+    logger.log("[UI_TRACE] handleSummarizeAll: 开始批量摘要");
+    const papersToSummarize = Array.from(this.selectedPapers).map(id => this.papers.get(id));
     
-    // Show loading indicator for all papers
-    papers.forEach(paper => {
-      this.showSummaryLoadingIndicator(paper.id);
-    });
+    if (papersToSummarize.length === 0) {
+      logger.warn("[UI_TRACE] handleSummarizeAll: 没有选中的论文可供摘要");
+      return;
+    }
     
-    // Send message to background script to batch generate summaries
-    chrome.runtime.sendMessage({
-      action: 'batchSummarizePapers',
-      data: {
-        papers,
-        options: {
-          categorize: true
-        }
-      }
-    }, response => {
-      // Hide all loading indicators
-      papers.forEach(paper => {
-        this.hideSummaryLoadingIndicator(paper.id);
-      });
+    try {
+      const response = await sendMessageToBackend(MessageActions.SUMMARIZE_ALL_PAPERS, { papers: papersToSummarize });
       
       if (response && response.success) {
-        // Show all summaries
-        response.results.forEach(result => {
-          this.showSummary(result.paper.id, result.summary);
-        });
+        logger.log("[UI_TRACE] handleSummarizeAll: 批量摘要任务已启动");
+        // 可能需要一个UI提示，告知用户后台正在处理
       } else {
-        // Show error for all papers
-        papers.forEach(paper => {
-          this.showSummaryError(paper.id, response?.error || 'Failed to generate summaries');
-        });
+        logger.error("[UI_TRACE] handleSummarizeAll: 启动批量摘要失败:", response.error);
       }
-    });
+    } catch (error) {
+      logger.error("[UI_TRACE] handleSummarizeAll: 启动批量摘要时发生错误:", error);
+    }
   }
 
   /**
@@ -556,45 +459,26 @@ class UIManager {
    * @param {Object} platform - Platform adapter instance
    */
   async handleDownloadAll(platform) {
-    // Get all papers with PDF links
-    // const papers = (await platform.extractPapers()).filter(paper => paper.pdfUrl);
+    logger.log("[UI_TRACE] handleDownloadAll: 开始批量下载");
+    const papersToDownload = Array.from(this.selectedPapers).map(id => this.papers.get(id));
     
-    if (papers.length === 0) {
-      alert('No papers with PDF links found');
+    if (papersToDownload.length === 0) {
+      logger.warn("[UI_TRACE] handleDownloadAll: 没有选中的论文可供下载");
       return;
     }
     
-    // Show loading indicator for all papers
-    papers.forEach(paper => {
-      this.showDownloadLoadingIndicator(paper.id);
-    });
-    
-    // Send message to background script to batch download PDFs
-    chrome.runtime.sendMessage({
-      action: 'batchDownloadPapers',
-      data: { papers }
-    }, response => {
-      // Hide all loading indicators
-      papers.forEach(paper => {
-        this.hideDownloadLoadingIndicator(paper.id);
-      });
+    try {
+      const response = await sendMessageToBackend(MessageActions.DOWNLOAD_ALL_PAPERS, { papers: papersToDownload });
       
       if (response && response.success) {
-        // Show all download results
-        response.results.forEach(result => {
-          if (result.success) {
-            this.showDownloadSuccess(result.paper.id);
-          } else {
-            this.showDownloadError(result.paper.id, result.error);
-          }
-        });
+        logger.log("[UI_TRACE] handleDownloadAll: 批量下载任务已启动");
+        // UI提示
       } else {
-        // Show error for all papers
-        papers.forEach(paper => {
-          this.showDownloadError(paper.id, response?.error || 'Failed to download PDFs');
-        });
+        logger.error("[UI_TRACE] handleDownloadAll: 启动批量下载失败:", response.error);
       }
-    });
+    } catch (error) {
+      logger.error("[UI_TRACE] handleDownloadAll: 启动批量下载时发生错误:", error);
+    }
   }
 
   /**
@@ -796,6 +680,16 @@ class UIManager {
    */
   getControlsComponent(paperId) {
     return this.controlsComponents.get(paperId) || null;
+  }
+
+  /**
+   * 获取已注册组件的数量
+   * @returns {number} 已注册组件的总数
+   */
+  getRegisteredComponentsCount() {
+    const componentCount = this.components.size;
+    const controlsComponentCount = this.controlsComponents.size;
+    return componentCount + controlsComponentCount;
   }
 }
 

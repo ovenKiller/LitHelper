@@ -1,6 +1,6 @@
 import PlatformAdapter from './PlatformAdapter';
 
-import { logger } from '../../../background/utils/logger';
+import { logger } from '../../../util/logger.js';
 class SearchPlatformAdapter extends PlatformAdapter {
   constructor() {
     super();

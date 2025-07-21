@@ -11,9 +11,13 @@ import SearchPlatformAdapter from '../base/SearchPlatformAdapter';
 import AdapterFactory from '../AdapterFactory';
 import PaperControls from '../../ui/components/PaperControls';
 import SummaryContainer from '../../ui/components/SummaryContainer';
-import { Paper } from '../../../models/Paper';
-import { logger } from '../../../background/utils/logger';
-import { parseHTML } from '../../../api/aiHtmlParser';
+import { Paper } from '../../../model/Paper';
+import { logger } from '../../../util/logger.js';
+import GoogleScholarElementExtractor from '../../extractors/elementExtractors/googleScholarElementExactor';
+import { PLATFORM_KEYS, getPlatformDisplayName, SUPPORTED_TASK_TYPES, PAGE_TYPE } from '../../../constants';
+import { parseDocumentToXMLStructure, extractTextStructure } from '../../../util/htmlParser.js';
+import { runTimeDataService } from '../../../service/runTimeDataService.js';
+import { addContentScriptMessageListener, MessageActions } from '../../../util/message.js';
 
 
 class GoogleScholarAdapter extends SearchPlatformAdapter {
@@ -21,11 +25,122 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
     super();
     this.extractorFactory = AdapterFactory;
     this.uiManager = null; // 将在setPlatformManager中设置
+    this.elementExtractor = new GoogleScholarElementExtractor(); // 添加元素提取器
+    this.setupMessageListeners(); // 设置消息监听器
   }
 
   // 设置UI管理器
   setPlatformManager(uiManager) {
     this.uiManager = uiManager;
+  }
+
+  /**
+   * 设置消息监听器
+   */
+  setupMessageListeners() {
+    const handlers = new Map();
+    handlers.set(MessageActions.TASK_COMPLETION_NOTIFICATION, this.handleTaskCompletionNotification.bind(this));
+    
+    addContentScriptMessageListener(handlers);
+    logger.log('[GoogleScholarAdapter] Message listeners setup completed');
+  }
+
+  /**
+   * 处理任务完成通知
+   * @param {Object} data - 通知数据
+   * @param {Object} sender - 发送者信息
+   * @param {Function} sendResponse - 响应函数
+   */
+  async handleTaskCompletionNotification(data, sender, sendResponse) {
+    try {
+      logger.log('[GoogleScholarAdapter] Received task completion notification:', data);
+      
+      const { taskType, url, platform, success, elementCount } = data;
+      
+      // 验证条件1：检查当前页面是否已成功嵌入UI
+      const hasUIComponents = this.checkUIComponentsInjected();
+      
+      // 验证条件2：检查消息URL是否与当前页面一致
+      const urlMatches = this.checkUrlMatch(url);
+      
+      logger.log(`[GoogleScholarAdapter] UI components injected: ${hasUIComponents}, URL matches: ${urlMatches}`);
+      
+      // 如果两个条件都满足，弹出刷新提示
+      if (!hasUIComponents && urlMatches && success) {
+        this.showRefreshPrompt(elementCount);
+      }
+      
+      sendResponse({ received: true });
+    } catch (error) {
+      logger.error('[GoogleScholarAdapter] Error handling task completion notification:', error);
+      sendResponse({ received: false, error: error.message });
+    }
+    
+    return true; // 异步响应
+  }
+
+  /**
+   * 检查UI组件是否已注入
+   * @returns {boolean} 是否已注入UI组件
+   */
+  checkUIComponentsInjected() {
+    // 方法1：通过UIManager检查注册的组件数量
+    if (this.uiManager && this.uiManager.getRegisteredComponentsCount) {
+      const componentCount = this.uiManager.getRegisteredComponentsCount();
+      if (componentCount > 0) {
+        logger.log(`[GoogleScholarAdapter] Found ${componentCount} registered UI components`);
+        return true;
+      }
+    }
+    
+    // 方法2：通过DOM检查特定的UI组件类名
+    const paperControls = document.querySelectorAll('.lit-helper-paper-controls');
+    const summaryContainers = document.querySelectorAll('.lit-helper-summary-container');
+    
+    if (paperControls.length > 0 || summaryContainers.length > 0) {
+      logger.log(`[GoogleScholarAdapter] Found ${paperControls.length} paper controls and ${summaryContainers.length} summary containers`);
+      return true;
+    }
+    
+    logger.log('[GoogleScholarAdapter] No UI components found');
+    return false;
+  }
+
+  /**
+   * 检查URL是否匹配当前页面
+   * @param {string} messageUrl - 消息中的URL
+   * @returns {boolean} URL是否匹配
+   */
+  checkUrlMatch(messageUrl) {
+    try {
+      const currentUrl = new URL(window.location.href);
+      const taskUrl = new URL(messageUrl);
+      
+      // 比较域名和路径
+      const matches = currentUrl.hostname === taskUrl.hostname && 
+                     currentUrl.pathname === taskUrl.pathname;
+      
+      logger.log(`[GoogleScholarAdapter] URL match check: current=${currentUrl.href}, task=${taskUrl.href}, matches=${matches}`);
+      return matches;
+    } catch (error) {
+      logger.error('[GoogleScholarAdapter] Error checking URL match:', error);
+      return false;
+    }
+  }
+
+  /**
+   * 显示刷新页面提示
+   * @param {number} elementCount - 提取到的元素数量
+   */
+  showRefreshPrompt(elementCount) {
+    const message = `论文元素提取任务已完成！检测到 ${elementCount} 个论文项。\n\n是否刷新页面以应用新的UI组件？`;
+    
+    if (confirm(message)) {
+      logger.log('[GoogleScholarAdapter] User confirmed refresh, reloading page');
+      window.location.reload();
+    } else {
+      logger.log('[GoogleScholarAdapter] User declined refresh');
+    }
   }
 
   /**
@@ -41,7 +156,15 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
    * @returns {string}
    */
   getPlatformName() {
-    return 'Google Scholar';
+    return getPlatformDisplayName(PLATFORM_KEYS.GOOGLE_SCHOLAR);
+  }
+
+  /**
+   * 获取平台键名（标识符）
+   * @returns {string}
+   */
+  getPlatformKey() {
+    return PLATFORM_KEYS.GOOGLE_SCHOLAR;
   }
 
   /**
@@ -49,7 +172,7 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
    * @returns {HTMLElement|null}
    */
   getResultsContainer() {
-    return document.querySelector('#gs_res_ccl_mid') || document.querySelector('#gs_res_ccl');
+    return this.elementExtractor.getResultsContainer();
   }
 
 
@@ -59,11 +182,10 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
    */
   async extractPapers() {
     parseDocument(document, "");
-    const container = this.getResultsContainer();
-    if (!container) return [];
     
-    const resultItems = container.querySelectorAll('.gs_r.gs_or.gs_scl') || 
-                        container.querySelectorAll('.gs_ri');
+    // 使用元素提取器获取论文元素
+    const resultItems = this.elementExtractor.extractAllPaperElements();
+    
     return this.extractPapersFromElements(resultItems, 'google_scholar', 'gs');
   }
   /**
@@ -241,24 +363,79 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
   }
 
   /**
-   * 在页面中嵌入UI元素
+   * 准备页面数据（并行执行）
+   * @returns {Promise<void>}
+   */
+  async preparePageData() {
+    logger.log(`[GoogleScholarAdapter] 开始准备页面数据...`);
+    
+    // 预查询CSS选择器，这个操作可以与UIManager初始化并行进行
+    this.cachedSelector = await runTimeDataService.getCssSelectorForPage(
+      window.location.href, 
+      PAGE_TYPE.SEARCH_RESULTS
+    );
+    
+    if (this.cachedSelector) {
+      logger.log(`[GoogleScholarAdapter] 找到已保存的CSS选择器: ${this.cachedSelector.selector}`);
+    } else {
+      logger.log(`[GoogleScholarAdapter] 未找到已保存的CSS选择器，稍后将创建AI学习任务`);
+    }
+    
+    logger.log(`[GoogleScholarAdapter] 页面数据准备完成`);
+  }
+
+  /**
+   * 在页面中嵌入UI元素（优化版本）
    * @returns {Promise<boolean>} 操作是否成功
    */
   async injectUI() {
     logger.log("页面UI元素嵌入");
     try {
-      // 检查UI管理器是否已设置
-      if (!this.uiManager) {
-        logger.error('UI Manager not initialized');
+      let papers = [];
+      
+      // 使用已经预准备的CSS选择器数据
+      if (this.cachedSelector) {
+        logger.log(`[GoogleScholarAdapter] 使用预准备的CSS选择器: ${this.cachedSelector.selector}`);
+        
+        try {
+          // 使用已保存的选择器提取论文元素
+          papers = await this.extractPapersWithSelector(this.cachedSelector.selector);
+          
+          if (papers.length <= 1) {
+            logger.warn(`[GoogleScholarAdapter] 已保存的选择器未能提取到足够论文，可能页面结构已变化`);
+            // 如果选择器失效，禁用它并创建新任务
+            await this.createPaperElementCrawlerTask();
+            logger.log(`[GoogleScholarAdapter] 已创建新的AI爬取任务，等待学习新选择器`);
+            return false;
+          }
+        } catch (error) {
+          logger.error(`[GoogleScholarAdapter] 使用已保存选择器提取论文时发生错误:`, error);
+          // 创建新的AI任务来学习选择器，但不阻塞当前流程
+          this.createPaperElementCrawlerTask().catch(err => 
+            logger.error('创建AI任务失败:', err)
+          );
+          return false;
+        }
+        
+      } else {
+        logger.log(`[GoogleScholarAdapter] 没有可用的CSS选择器，创建AI学习任务`);
+        
+        // 创建任务让AI学习，但不等待完成，让用户能看到基本UI
+        this.createPaperElementCrawlerTask().catch(err => 
+          logger.error('创建AI任务失败:', err)
+        );
+        logger.log(`[GoogleScholarAdapter] AI学习任务已创建，当前页面不执行UI注入`);
         return false;
       }
 
-      // 异步获取当前页面的论文
-      const papers = await this.extractPapers();
+      // 为提取到的论文注入UI组件
+      logger.log(`[GoogleScholarAdapter] 开始为 ${papers.length} 篇论文注入UI组件`);
       
-      // 为每个论文创建并注入UI组件
       for (const paper of papers) {
-        if (!paper.element) continue;
+        if (!paper.element) {
+          logger.warn(`[GoogleScholarAdapter] 论文 ${paper.id} 缺少DOM元素，跳过UI注入`);
+          continue;
+        }
         
         // 创建论文控制组件
         const controls = new PaperControls(paper.id, paper.element);
@@ -280,10 +457,101 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
         this.uiManager.registerComponent(paper.id, summaryContainer);
       }
       
+      logger.log(`[GoogleScholarAdapter] UI注入完成，成功为 ${papers.length} 篇论文注入组件`);
       return true;
+      
     } catch (error) {
-      logger.error('Failed to inject UI:', error);
+      logger.error('[GoogleScholarAdapter] UI注入失败:', error);
       return false;
+    }
+  }
+
+  /**
+   * 使用指定的CSS选择器提取论文
+   * @param {string} selector - CSS选择器字符串
+   * @returns {Promise<Array>} 提取的论文数组
+   */
+  async extractPapersWithSelector(selector) {
+    try {
+      // 使用CSS选择器直接从页面提取元素
+      const elements = document.querySelectorAll(selector);
+      
+      if (elements.length === 0) {
+        logger.warn(`[GoogleScholarAdapter] 选择器 "${selector}" 未匹配到任何元素`);
+        return [];
+      }
+      
+      logger.log(`[GoogleScholarAdapter] 选择器 "${selector}" 匹配到 ${elements.length} 个元素`);
+      
+      // 将NodeList转换为数组并提取论文信息
+      const resultItems = Array.from(elements);
+      return this.extractPapersFromElements(resultItems, 'google_scholar', 'gs');
+      
+    } catch (error) {
+      logger.error(`[GoogleScholarAdapter] 使用选择器提取论文时发生错误:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 创建论文元素爬虫任务
+   * @returns {Promise<boolean>} 操作是否成功
+   */
+  async createPaperElementCrawlerTask() {
+    try {
+      // 简单的任务参数 - 只传递HTML
+      const taskParams = {
+        url: window.location.href,
+        platform: this.getPlatformKey(),
+        pageHTML: extractTextStructure(document.documentElement),
+        timestamp: Date.now()
+      };
+
+      // 生成任务键名
+      const taskKey = `paper_element_crawler_${this.getPlatformKey()}_${Date.now()}`;
+
+      // 通过消息发送到后台
+      const result = await this.sendTaskToBackground(taskKey, SUPPORTED_TASK_TYPES.PAPER_ELEMENT_CRAWLER, taskParams);
+      logger.log('Paper element crawler task created successfully:', result);
+      if (result.success) {
+        logger.log('Paper element crawler task created successfully:', taskKey);
+        return true;
+      } else {
+        logger.error('Failed to create paper element crawler task:', result.error);
+        return false;
+      }
+    } catch (error) {
+      logger.error('Error creating paper element crawler task:', error);
+      return false;
+    }
+  }
+
+  /**
+   * 发送任务到后台
+   * @param {string} taskKey - 任务键名
+   * @param {string} taskType - 任务类型
+   * @param {Object} taskParams - 任务参数
+   * @returns {Promise<Object>} 操作结果
+   */
+  async sendTaskToBackground(taskKey, taskType, taskParams) {
+    try {
+      // 导入消息模块
+      const { sendMessageToBackend, MessageActions } = await import('../../../util/message.js');
+      
+      // 发送消息到后台
+      const result = await sendMessageToBackend(MessageActions.ADD_TASK_TO_QUEUE, {
+        taskKey,
+        taskType,
+        taskParams
+      });
+      
+      return result;
+    } catch (error) {
+      logger.error('Failed to send task to background:', error);
+      return {
+        success: false,
+        error: error.message || '发送任务失败'
+      };
     }
   }
 

@@ -23,7 +23,9 @@
     "activeTab",
     "scripting",
     "downloads",
-    "contextMenus"
+    "contextMenus",
+    "alarms",
+    "offscreen"
   ],
   "host_permissions": [
     "*://scholar.google.com/*",

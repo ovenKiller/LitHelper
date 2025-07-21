@@ -4,7 +4,7 @@
  * A popup window component that can be used across different platforms
  */
 
-import { logger } from '../../../background/utils/logger.js';
+import { logger } from '../../../util/logger.js';
 
 // 正确的路径，与manifest.json中的web_accessible_resources配置一致
 const DELETE_ICON_PATH = 'icons/delete-icon.svg';

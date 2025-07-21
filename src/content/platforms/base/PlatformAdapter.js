@@ -6,7 +6,7 @@
 
 import UIManager from '../../ui/UIManager';
 
-import { logger } from '../../../background/utils/logger';
+import { logger } from '../../../util/logger.js';
 class PlatformAdapter {
   constructor() {
     this.uiManager = null;
@@ -20,11 +20,42 @@ class PlatformAdapter {
     if (!this.isPageSupported()) {
       throw new Error('Page not supported');
     }
+    
     logger.log("platform adapter初始化")
-    // 在initialize方法中创建UIManager
-    this.uiManager = new UIManager();
-    await this.uiManager.initialize(this);
+    
+    // 🚀 并行化初始化：UIManager初始化和页面准备工作同时进行
+    const [uiManager] = await Promise.all([
+      // UI组件初始化（可能包含网络请求）
+      this.createAndInitializeUIManager(),
+      
+      // 页面准备工作（CSS选择器查询等，可以并行进行）
+      this.preparePageData()
+    ]);
+    
+    this.uiManager = uiManager;
+    
+    // UI注入依赖于前面的准备工作，所以最后执行
     await this.injectUI();
+  }
+  
+  /**
+   * Create and initialize UI Manager
+   * @returns {Promise<UIManager>}
+   */
+  async createAndInitializeUIManager() {
+    const uiManager = new UIManager();
+    await uiManager.initialize(this);
+    return uiManager;
+  }
+  
+  /**
+   * Prepare page-specific data (can be overridden by subclasses)
+   * @returns {Promise<void>}
+   */
+  async preparePageData() {
+    // 默认实现为空，子类可以重写以执行页面准备工作
+    // 例如：预加载CSS选择器、准备DOM查询等
+    logger.log("准备页面数据（基类默认实现）");
   }
 
   /**
