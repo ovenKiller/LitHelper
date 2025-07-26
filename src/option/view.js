@@ -10,6 +10,7 @@ export class View {
     // --- General ---
     this.saveStatus = document.getElementById('status-message');
     this.resetButton = document.getElementById('reset-defaults');
+    this.saveButton = document.getElementById('save-settings');
 
     // --- AI Model Settings ---
     this.modelSettingsContainer = document.getElementById('model-cards-container');
@@ -99,6 +100,14 @@ export class View {
   }
 
   // --- General Event Binding ---
+
+  bindSaveSettings(handler) {
+    if (this.saveButton) {
+      this.saveButton.addEventListener('click', () => {
+        handler();
+      });
+    }
+  }
 
   bindResetSettings(handler) {
     if (this.resetButton) {

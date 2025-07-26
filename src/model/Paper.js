@@ -27,7 +27,7 @@
 class Paper {
   /**
    * Creates an instance of Paper.
-   * @param {Partial<PaperProperties>} initialData - Initial data for the paper.
+   * @param {Partial<PaperProperties & { element: HTMLElement, sourceUrl: string }>} initialData - Initial data for the paper.
    */
   constructor(initialData = {}) {
     /** @type {string} */
@@ -55,8 +55,11 @@ class Paper {
     this.source = initialData.source || '';
     /** @type {string}  专门在googleScholar平台下使用*/
     this.googleScholarVersionsUrl = initialData.googleScholarVersionsUrl || '';
-    /** @type {Object} */
-    this.metadata = initialData.metadata || {};
+    /** @type {HTMLElement | null} */
+    this.element = initialData.element || null;
+    /** @type {string} */
+    this.sourceUrl = initialData.sourceUrl || '';
+    
   }
 
   /**

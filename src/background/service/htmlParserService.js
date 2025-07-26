@@ -186,6 +186,46 @@ export class HtmlParserService {
   }
 
   /**
+   * 压缩HTML提取文字结构
+   * @param {string} html - 完整HTML字符串
+   * @param {number} minLength - 最小文字长度，默认20
+   * @returns {Promise<string>} 压缩后的文字结构XML
+   */
+  async compressHtmlToTextStructure(html, minLength = 20) {
+    try {
+      if (!this.isInitialized) {
+        await this.initialize();
+      }
+
+      if (!html || typeof html !== 'string') {
+        throw new Error('HTML parameter is required and must be a string');
+      }
+
+      logger.log(`[HtmlParserService] Compressing HTML to text structure (minLength: ${minLength})`);
+      
+      // 发送消息到 Offscreen 文档进行HTML压缩
+      const response = await chrome.runtime.sendMessage({
+        target: 'offscreen',
+        action: 'compressHtml',
+        data: {
+          html,
+          minLength
+        }
+      });
+
+      if (response && response.success) {
+        logger.log(`[HtmlParserService] Successfully compressed HTML to text structure`);
+        return response.data.compressedHtml;
+      } else {
+        throw new Error(response?.error || 'Unknown error occurred during HTML compression');
+      }
+    } catch (error) {
+      logger.error('[HtmlParserService] Failed to compress HTML:', error);
+      throw error;
+    }
+  }
+
+  /**
    * 确保 Offscreen 文档存在
    * @returns {Promise<void>}
    */

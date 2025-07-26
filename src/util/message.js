@@ -35,6 +35,9 @@ export const MessageActions = {
   ADD_TASK_TO_QUEUE: 'addTaskToQueue',
   TASK_COMPLETION_NOTIFICATION: 'taskCompletionNotification',
 
+  // Paper metadata related (论文元数据相关)
+  PROCESS_PAPER_ELEMENT_LIST: 'processPaperElementList',
+
   // Internal/System actions (内部/系统操作)
   OPEN_SETTINGS: 'openSettings',
   

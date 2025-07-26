@@ -33,6 +33,7 @@ export class Controller {
     this.view.bindAddModel(this.handleAddModel.bind(this));
     this.view.bindDefaultModelChange(this.handleDefaultModelChange.bind(this));
     this.view.bindResetSettings(this.handleResetSettings.bind(this));
+    this.view.bindSaveSettings(this.handleSaveSettings.bind(this));
   }
   
   // --- Event Handlers ---
@@ -128,6 +129,17 @@ export class Controller {
     } catch (error) {
       logger.error('Failed to reset settings:', error);
       this.view.showSaveStatus('Failed to reset settings.', false);
+    }
+  }
+
+  async handleSaveSettings() {
+    try {
+      await this.configService.saveConfig();
+      this.view.showSaveStatus('所有设置已成功保存！');
+      logger.log('Settings saved successfully');
+    } catch (error) {
+      logger.error('Failed to save settings:', error);
+      this.view.showSaveStatus('保存设置失败，请重试。', false);
     }
   }
 } 

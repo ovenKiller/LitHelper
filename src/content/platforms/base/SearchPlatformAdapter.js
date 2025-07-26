@@ -6,13 +6,6 @@ class SearchPlatformAdapter extends PlatformAdapter {
     super();
   }
 
-  /**
-   * 获取搜索结果容器
-   * @returns {HTMLElement|null}
-   */
-  getResultsContainer() {
-    return null;
-  }
 
   /**
    * 获取搜索结果中的论文数量

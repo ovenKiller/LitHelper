@@ -99,7 +99,7 @@ class AIService {
       return {
         success: true,
         message: "连接成功！",
-        data: result.substring(0, 100)
+        data: typeof result === 'string' ? result.substring(0, 100) : String(result).substring(0, 100)
       };
     } catch (error) {
       return {
@@ -237,6 +237,40 @@ class AIService {
   }
 
   /**
+   * 从AI返回的字符串中提取并解析JSON数据
+   * AI返回的数据可能包含多余的字符，需要先提取最外层{}包裹的JSON字符串
+   * @param {string} responseText - AI返回的原始文本
+   * @returns {Object} 解析后的JSON对象
+   * @throws {Error} 如果无法提取或解析JSON
+   * @private
+   */
+  _extractAndParseJSON(responseText) {
+    if (!responseText || typeof responseText !== 'string') {
+      throw new Error('AI返回数据为空或格式错误');
+    }
+
+    // 查找第一个 { 和最后一个 } 的位置
+    const firstBraceIndex = responseText.indexOf('{');
+    const lastBraceIndex = responseText.lastIndexOf('}');
+
+    if (firstBraceIndex === -1 || lastBraceIndex === -1 || firstBraceIndex >= lastBraceIndex) {
+      throw new Error('AI返回的数据中未找到有效的JSON格式');
+    }
+
+    // 提取JSON字符串
+    const jsonString = responseText.substring(firstBraceIndex, lastBraceIndex + 1);
+
+    try {
+      // 解析JSON
+      const parsedJSON = JSON.parse(jsonString);
+      return parsedJSON;
+    } catch (parseError) {
+      logger.error('JSON解析失败，原始数据:', jsonString);
+      throw new Error(`JSON解析失败: ${parseError.message}`);
+    }
+  }
+
+  /**
    * 使用指定的模型配置调用AI
    * @param {string} prompt - 用户提示词
    * @param {Object} modelConfig - 模型配置对象
@@ -295,6 +329,275 @@ class AIService {
         message: errorMessage
       };
     }
+  }
+
+  /**
+   * 提取论文项列表
+   * @param {string} compressedHTML - 压缩后的HTML内容
+   * @param {string} platform - 平台名称
+   * @returns {Promise<Object>} 提取结果
+   */
+  async extractPaperItems(compressedHTML, platform) {
+    try {
+      const prompt = this._createPaperItemExtractionPrompt(compressedHTML, platform);
+      
+      const aiResponse = await this.callLLM(prompt);
+      if (!aiResponse.success) {
+        throw new Error(aiResponse.message || '调用AI服务失败');
+      }
+      
+      // 使用封装的方法解析AI返回的JSON
+      let selectorConfig;
+      try {
+        selectorConfig = this._extractAndParseJSON(aiResponse.data);
+      } catch (parseError) {
+        logger.error('AI返回数据解析失败:', aiResponse.data);
+        throw new Error(`AI返回的选择器配置格式无效: ${parseError.message}`);
+      }
+      
+      // 验证返回格式
+      if (!selectorConfig.mode || !selectorConfig.selector) {
+        throw new Error('AI返回的选择器配置缺少必要字段');
+      }
+      
+      return {
+        success: true,
+        data: selectorConfig
+      };
+      
+    } catch (error) {
+      logger.error('论文项提取失败:', error);
+      return {
+        success: false,
+        error: error.message || '论文项提取失败',
+        data: null
+      };
+    }
+  }
+
+  /**
+   * 生成子选择器
+   * @param {string} sampleHTMLs - 学习样本HTML内容
+   * @param {string} platform - 平台名称
+   * @returns {Promise<Object>} 生成结果
+   */
+  async generateSubSelectors(sampleHTMLs, platform) {
+    try {
+      const prompt = this._createSubSelectorGenerationPrompt(sampleHTMLs, platform);
+      
+      const aiResponse = await this.callLLM(prompt);
+      if (!aiResponse.success) {
+        throw new Error(aiResponse.message || '调用AI服务失败');
+      }
+      
+      // 使用封装的方法解析AI返回的JSON
+      let subSelectors;
+      try {
+        subSelectors = this._extractAndParseJSON(aiResponse.data);
+      } catch (parseError) {
+        logger.error('AI返回的子选择器数据解析失败:', aiResponse.data);
+        throw new Error(`AI返回的子选择器配置格式无效: ${parseError.message}`);
+      }
+      
+      return {
+        success: true,
+        data: subSelectors
+      };
+      
+    } catch (error) {
+      logger.error('子选择器生成失败:', error);
+      return {
+        success: false,
+        error: error.message || '子选择器生成失败',
+        data: null
+      };
+    }
+  }
+
+  /**
+   * 验证选择器提取结果
+   * @param {Array} validationSamples - 验证样本数组，每个样本包含论文项HTML
+   * @param {Object} subSelectors - 子选择器配置对象
+   * @param {Array} extractionResults - 各个选择器的提取结果
+   * @param {string} platform - 平台名称
+   * @returns {Promise<Object>} 验证结果
+   */
+  async validateSelectors(validationSamples, subSelectors, extractionResults, platform) {
+    try {
+      const prompt = this._createSelectorValidationPrompt(validationSamples, subSelectors, extractionResults, platform);
+      
+      const aiResponse = await this.callLLM(prompt);
+      if (!aiResponse.success) {
+        throw new Error(aiResponse.message || '调用AI服务失败');
+      }
+      
+      // 使用封装的方法解析AI返回的JSON
+      let validationResult;
+      try {
+        validationResult = this._extractAndParseJSON(aiResponse.data);
+      } catch (parseError) {
+        logger.error('AI返回的验证结果数据解析失败:', aiResponse.data);
+        throw new Error(`AI返回的验证结果格式无效: ${parseError.message}`);
+      }
+      
+      return {
+        success: true,
+        data: validationResult
+      };
+      
+    } catch (error) {
+      logger.error('选择器验证失败:', error);
+      return {
+        success: false,
+        error: error.message || '选择器验证失败',
+        data: null
+      };
+    }
+  }
+
+  /**
+   * 创建论文项提取的AI提示
+   * @param {string} compressedHTML - 压缩后的HTML内容
+   * @param {string} platform - 平台名称
+   * @returns {string} AI提示
+   * @private
+   */
+  _createPaperItemExtractionPrompt(compressedHTML, platform) {
+    return `你是一个专业的网页结构分析师，需要分析${platform}网站搜索结果页的HTML结构，找出能够提取所有论文列表的选择器。
+
+请分析以下HTML结构：
+
+\`\`\`html
+${compressedHTML}
+\`\`\`
+
+任务要求：
+1. 识别页面中的论文条目列表所在的结构
+2. 论文项通常包含标题、作者、摘要、版本链接、pdf链接等
+
+请以JSON格式返回结果：
+{
+  "mode": "css", 
+  "selector": "你的选择器字符串"
+}
+
+响应示例：
+{"mode": "css", "selector": ".gs_ri.gs_or.gs_scl"}`;
+  }
+
+  /**
+   * 创建子选择器生成的AI提示
+   * @param {string} sampleHTMLs - 学习样本HTML内容
+   * @param {string} platform - 平台名称
+   * @returns {string} AI提示
+   * @private
+   */
+  _createSubSelectorGenerationPrompt(sampleHTMLs, platform) {
+    return `你是一个专业的网页结构分析师，需要分析${platform}网站论文项的HTML结构，为每个子元素生成提取选择器。
+
+请分析以下论文项样本的HTML结构，生成精确的选择器配置：
+
+\`\`\`html
+${sampleHTMLs}
+\`\`\`
+
+任务要求：
+1. 为每个论文项的以下元素生成选择器:
+   - 标题 (title)
+   - 摘要 (abstract) 
+
+2. 选择器规范：
+   - 可使用CSS选择器或正则表达式
+   - 避免直接使用<a>标签作为css选择器的一部分
+
+3. 验证要求：
+   - 每个选择器生成后必须进行自验证
+   - 验证失败需要优化选择器直到成功
+   - 即使某元素不存在也要提供合理的选择器
+
+请以下列JSON格式返回结果：
+{
+  "title": {
+    "mode": "css|regex",
+    "selector": "选择器字符串"
+  },
+  "abstract": {
+    "mode": "css|regex", 
+    "selector": "选择器字符串"
+  }
+}
+`;
+  }
+
+  /**
+   * 创建选择器验证的AI提示
+   * @param {Array} validationSamples - 验证样本数组
+   * @param {Object} subSelectors - 子选择器配置对象
+   * @param {Array} extractionResults - 各个选择器的提取结果
+   * @param {string} platform - 平台名称
+   * @returns {string} AI提示
+   * @private
+   */
+  _createSelectorValidationPrompt(validationSamples, subSelectors, extractionResults, platform) {
+    // 构建验证上下文信息
+    let contextInfo = `你是一个专业的网页数据验证专家，需要验证从${platform}网站论文项中提取的数据是否正确。
+
+以下是待验证的信息：
+
+## 原始论文项HTML样本：
+`;
+
+    // 添加原始HTML样本
+    validationSamples.forEach((sample, index) => {
+      contextInfo += `\n### 论文项${index + 1}:\n\`\`\`html\n${sample.outerHTML}\n\`\`\`\n`;
+    });
+
+    contextInfo += `\n## 使用的选择器配置：\n`;
+    for (const [extractorType, selectorConfig] of Object.entries(subSelectors)) {
+      contextInfo += `- ${extractorType}: ${selectorConfig.mode}模式，选择器="${selectorConfig.selector}"\n`;
+    }
+
+    contextInfo += `\n## 提取结果：\n`;
+    extractionResults.forEach((sampleResult, sampleIndex) => {
+      contextInfo += `\n### 样本${sampleIndex + 1}的提取结果：\n`;
+      for (const [extractorType, extractedData] of Object.entries(sampleResult)) {
+        contextInfo += `- ${extractorType}: ${JSON.stringify(extractedData)}\n`;
+      }
+    });
+
+    contextInfo += `\n## 验证任务：
+请分析每个提取器的提取结果是否正确，并提供修改建议：
+
+1. **paperElement（论文项）**: 是否正确提取到了论文项？论文项是否完整？
+2. **title（标题）**: 是否正确提取到了论文标题？标题是否完整？
+3. **abstract（摘要）**: 是否正确提取到了论文摘要？如果论文项本身不包含摘要，则视为正确
+4. **all_versions_link（所有版本链接）**: 是否正确提取到了"所有版本"相关的链接或文本？如果论文项本身不包含"所有版本"，则视为正确
+5. 以上若都正确，则overallSuccess为true。
+
+请以JSON格式返回验证结果：
+{
+  "overallSuccess": true/false,
+  "extractorResults": {
+    "paperElement": {
+      "isCorrect": true/false,
+      "issues": "修改意见"
+    },
+    "title": {
+      "isCorrect": true/false,
+      "issues": "修改意见"
+    },
+    "abstract": {
+      "isCorrect": true/false,
+      "issues": "修改意见"
+    },
+    "all_versions_link": {
+      "isCorrect": true/false,
+      "issues": "修改意见"
+    }
+  }
+}`;
+
+    return contextInfo;
   }
 }
 

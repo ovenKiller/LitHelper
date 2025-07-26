@@ -9,6 +9,7 @@ import { PLATFORM_KEYS } from '../constants.js';
 // 导入平台配置
 import { googleScholarConfig } from '../model/config/website/googleScholarConfig.js';
 import { CssSelector } from '../model/CssSelector.js';
+import { PlatformSelector } from '../model/PlatformSelector.js';
 
 class RunTimeDataService {
   constructor() {
@@ -23,6 +24,9 @@ class RunTimeDataService {
     // CSS选择器缓存
     this.cssSelectorCache = new Map();
     
+    // PlatformSelector缓存
+    this.platformSelectorCache = new Map();
+    
     // 初始化
     this.initialize();
   }
@@ -33,10 +37,6 @@ class RunTimeDataService {
   initialize() {
     logger.log('[RunTimeDataService] 初始化运行时数据服务');
     
-    // 预加载平台配置到缓存
-    Object.keys(this.platformConfigs).forEach(platformKey => {
-      this.loadPlatformSelectors(platformKey);
-    });
   }
 
   /**
@@ -60,92 +60,10 @@ class RunTimeDataService {
     }
   }
 
-  /**
-   * 获取平台选择器
-   * @param {string} platformKey - 平台键名
-   * @returns {Object|null} 选择器配置
-   */
-  getPlatformSelectors(platformKey) {
-    try {
-      // 先从缓存中获取
-      const cacheKey = `selectors_${platformKey}`;
-      if (this.runtimeCache.has(cacheKey)) {
-        logger.log(`[RunTimeDataService] 从缓存获取平台选择器 "${platformKey}"`);
-        return this.runtimeCache.get(cacheKey);
-      }
-      
-      // 从配置中获取
-      const config = this.getPlatformConfig(platformKey);
-      if (!config || !config.selectors) {
-        logger.warn(`[RunTimeDataService] 未找到平台选择器 "${platformKey}"`);
-        return this.getDefaultSelectors(platformKey);
-      }
-      
-      // 缓存并返回
-      this.runtimeCache.set(cacheKey, config.selectors);
-      logger.log(`[RunTimeDataService] 获取平台选择器 "${platformKey}"`);
-      return config.selectors;
-    } catch (error) {
-      logger.error(`[RunTimeDataService] 获取平台选择器失败 "${platformKey}":`, error);
-      return this.getDefaultSelectors(platformKey);
-    }
-  }
 
-  /**
-   * 获取默认选择器配置
-   * @param {string} platformKey - 平台键名
-   * @returns {Object} 默认选择器配置
-   */
-  getDefaultSelectors(platformKey) {
-    try {
-      logger.log(`[RunTimeDataService] 获取默认选择器配置 "${platformKey}"`);
-      
-      switch (platformKey) {
-        case PLATFORM_KEYS.GOOGLE_SCHOLAR:
-          return this.getGoogleScholarDefaultSelectors();
-        default:
-          logger.warn(`[RunTimeDataService] 未知平台 "${platformKey}"，返回空配置`);
-          return {};
-      }
-    } catch (error) {
-      logger.error(`[RunTimeDataService] 获取默认选择器配置失败 "${platformKey}":`, error);
-      return {};
-    }
-  }
 
-  /**
-   * 获取 Google Scholar 默认选择器配置
-   * @returns {Object} Google Scholar 默认选择器配置
-   */
-  getGoogleScholarDefaultSelectors() {
-    return {
-      resultsContainer: ['#gs_res_ccl_mid', '#gs_res_ccl'],
-      paperItems: ['.gs_r.gs_or.gs_scl', '.gs_ri'],
-      paperTitle: '.gs_rt a',
-      paperAuthors: '.gs_a',
-      paperAbstract: '.gs_rs',
-      paperLinks: '.gs_fl a',
-      citationCount: '.gs_fl a:contains("引用")',
-      relatedArticles: '.gs_fl a:contains("相关文章")',
-      pdfLink: '.gs_or_ggsm a[href$=".pdf"]',
-      versionInfo: '.gs_fl a:contains("版本")'
-    };
-  }
 
-  /**
-   * 预加载平台选择器
-   * @param {string} platformKey - 平台键名
-   */
-  loadPlatformSelectors(platformKey) {
-    try {
-      const selectors = this.getPlatformSelectors(platformKey);
-      logger.log(`[RunTimeDataService] 预加载平台选择器 "${platformKey}":`, selectors);
-      return selectors;
-    } catch (error) {
-      logger.error(`[RunTimeDataService] 预加载平台选择器失败 "${platformKey}":`, error);
-      return null;
-    }
-  }
+
 
   /**
    * 更新平台选择器
@@ -159,23 +77,6 @@ class RunTimeDataService {
       logger.log(`[RunTimeDataService] 更新平台选择器 "${platformKey}"`);
     } catch (error) {
       logger.error(`[RunTimeDataService] 更新平台选择器失败 "${platformKey}":`, error);
-    }
-  }
-
-  /**
-   * 重置平台选择器到默认配置
-   * @param {string} platformKey - 平台键名
-   */
-  resetPlatformSelectors(platformKey) {
-    try {
-      const cacheKey = `selectors_${platformKey}`;
-      this.runtimeCache.delete(cacheKey);
-      
-      // 重新加载默认配置
-      this.loadPlatformSelectors(platformKey);
-      logger.log(`[RunTimeDataService] 重置平台选择器 "${platformKey}"`);
-    } catch (error) {
-      logger.error(`[RunTimeDataService] 重置平台选择器失败 "${platformKey}":`, error);
     }
   }
 
@@ -724,6 +625,169 @@ class RunTimeDataService {
       }
     } catch (error) {
       logger.error('[RunTimeDataService] 清理过期任务数据失败:', error);
+    }
+  }
+
+  /**
+   * 保存PlatformSelector配置
+   * @param {PlatformSelector} platformSelector - PlatformSelector对象
+   * @returns {boolean} 是否保存成功
+   */
+  async savePlatformSelector(platformSelector) {
+    try {
+      if (!platformSelector || !platformSelector.domain || !platformSelector.pageType) {
+        logger.error('[RunTimeDataService] savePlatformSelector: 无效的PlatformSelector数据');
+        return false;
+      }
+      
+      const key = platformSelector.getKey();
+      const storageKey = `platformSelectors.${key}`;
+      const saveData = platformSelector.toJSON();
+      
+      logger.log(`[RunTimeDataService] 📝 准备保存PlatformSelector:`);
+      logger.log(`  - Key: ${key}`);
+      logger.log(`  - Storage Key: ${storageKey}`);
+      logger.log(`  - Domain: ${platformSelector.domain}`);
+      logger.log(`  - Page Type: ${platformSelector.pageType}`);
+      logger.log(`  - Platform Key: ${platformSelector.platformKey || 'undefined'}`);
+      
+      logger.log(`[RunTimeDataService] 📄 完整保存数据:`, saveData);
+      
+      // 详细显示每个提取器的配置
+      if (saveData.extractors && Object.keys(saveData.extractors).length > 0) {
+        logger.log(`[RunTimeDataService] 🔧 提取器配置详情:`);
+        for (const [extractorType, extractorConfig] of Object.entries(saveData.extractors)) {
+          logger.log(`  - ${extractorType}:`, {
+            mode: extractorConfig.mode,
+            selector: extractorConfig.selector,
+            description: extractorConfig.description,
+            hasValidation: !!extractorConfig.validation
+          });
+        }
+      } else {
+        logger.warn(`[RunTimeDataService] ⚠️  没有提取器配置数据`);
+      }
+      
+      // 保存到Chrome存储
+      logger.log(`[RunTimeDataService] 💾 开始保存到Chrome存储...`);
+      await chrome.storage.local.set({ [storageKey]: saveData });
+      
+      // 验证保存结果
+      const verifyResult = await chrome.storage.local.get([storageKey]);
+      if (verifyResult[storageKey]) {
+        logger.log(`[RunTimeDataService] ✅ 保存验证成功，数据已确认写入存储`);
+        logger.log(`[RunTimeDataService] 📋 验证数据摘要:`, {
+          domain: verifyResult[storageKey].domain,
+          pageType: verifyResult[storageKey].pageType,
+          extractorCount: verifyResult[storageKey].extractors ? Object.keys(verifyResult[storageKey].extractors).length : 0
+        });
+      } else {
+        logger.error(`[RunTimeDataService] ❌ 保存验证失败，数据未能写入存储`);
+        return false;
+      }
+      
+      // 更新缓存
+      this.platformSelectorCache.set(key, platformSelector);
+      logger.log(`[RunTimeDataService] 📦 缓存已更新，缓存大小: ${this.platformSelectorCache.size}`);
+      
+      logger.log(`[RunTimeDataService] ✅ PlatformSelector ${key} 保存成功`);
+      return true;
+    } catch (error) {
+      logger.error('[RunTimeDataService] savePlatformSelector: 保存PlatformSelector失败:', error);
+      return false;
+    }
+  }
+
+  /**
+   * 获取PlatformSelector配置
+   * @param {string} domain - 域名
+   * @param {string} pageType - 页面类型
+   * @returns {PlatformSelector|null} PlatformSelector对象
+   */
+  async getPlatformSelector(domain, pageType) {
+    try {
+      const key = `${domain}_${pageType}`;
+      
+      logger.log(`[RunTimeDataService] getPlatformSelector: domain=${domain}, pageType=${pageType}, key=${key}`);
+      
+      // 先从缓存中获取
+      if (this.platformSelectorCache.has(key)) {
+        logger.log(`[RunTimeDataService] 从缓存获取PlatformSelector ${key}`);
+        return this.platformSelectorCache.get(key);
+      }
+      
+      // 从存储中获取
+      const storageKey = `platformSelectors.${key}`;
+      logger.log(`[RunTimeDataService] 从存储查找: ${storageKey}`);
+      
+      const result = await chrome.storage.local.get([storageKey]);
+      
+      logger.log(`[RunTimeDataService] 存储查询结果:`, {
+        storageKey: storageKey,
+        exists: !!result[storageKey],
+        data: result[storageKey] ? 'found' : 'not found'
+      });
+      
+      if (!result[storageKey]) {
+        logger.log(`[RunTimeDataService] PlatformSelector ${key} 不存在`);
+        
+        // 额外调试：列出所有存储的 platformSelectors
+        try {
+          const allStorage = await chrome.storage.local.get(null);
+          const allPlatformSelectorKeys = Object.keys(allStorage).filter(k => k.startsWith('platformSelectors.'));
+          logger.log(`[RunTimeDataService] 所有已存储的PlatformSelector keys:`, allPlatformSelectorKeys);
+        } catch (debugError) {
+          logger.error(`[RunTimeDataService] 调试信息获取失败:`, debugError);
+        }
+        
+        return null;
+      }
+      
+      // 创建PlatformSelector实例
+      logger.log(`[RunTimeDataService] 创建PlatformSelector实例，数据:`, result[storageKey]);
+      const platformSelector = new PlatformSelector(result[storageKey]);
+      
+      // 更新缓存
+      this.platformSelectorCache.set(key, platformSelector);
+      
+      logger.log(`[RunTimeDataService] 获取PlatformSelector ${key} 成功`);
+      return platformSelector;
+    } catch (error) {
+      logger.error(`[RunTimeDataService] getPlatformSelector: 获取PlatformSelector失败[${domain}_${pageType}]:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * 根据URL和页面类型获取PlatformSelector
+   * @param {string} url - 目标URL
+   * @param {string} pageType - 页面类型
+   * @returns {PlatformSelector|null} PlatformSelector对象
+   */
+  async getPlatformSelectorForPage(url, pageType) {
+    try {
+      logger.log(`[RunTimeDataService] getPlatformSelectorForPage 开始: url=${url}, pageType=${pageType}`);
+      
+      const domain = PlatformSelector.extractDomain(url);
+      if (!domain) {
+        logger.error('[RunTimeDataService] getPlatformSelectorForPage: URL解析失败:', url);
+        return null;
+      }
+      
+      logger.log(`[RunTimeDataService] 提取的域名: ${domain}`);
+      
+      const result = await this.getPlatformSelector(domain, pageType);
+      
+      if (result) {
+        logger.log(`[RunTimeDataService] getPlatformSelectorForPage 成功: ${result.getKey()}`);
+      } else {
+        logger.log(`[RunTimeDataService] getPlatformSelectorForPage 未找到匹配的PlatformSelector`);
+      }
+      
+      return result;
+    } catch (error) {
+      logger.error('[RunTimeDataService] getPlatformSelectorForPage: 获取PlatformSelector失败:', error);
+      return null;
     }
   }
 }

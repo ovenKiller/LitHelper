@@ -66,7 +66,8 @@ class ContentScript {
   setupObserver() {
     if (!this.adapter) return;
     
-    const targetNode = this.adapter.getResultsContainer();
+
+    const targetNode = document.documentElement;
     if (!targetNode) return;
     
     const observerConfig = { 

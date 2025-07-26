@@ -79,14 +79,7 @@ class PlatformAdapter {
     return [];
   }
 
-  /**
-   * Extract papers from current page
-   * @returns {Promise<Array>} Extracted papers
-   */
-  async extractPapers() {
-    // This should be implemented by subclasses
-    return [];
-  }
+
 
   /**
    * Extract papers from HTML content
@@ -138,14 +131,7 @@ class PlatformAdapter {
     }
   }
 
-  /**
-   * Get the container element for paper results
-   * @returns {HTMLElement|null}
-   */
-  getResultsContainer() {
-    // This should be implemented by subclasses
-    return null;
-  }
+
 
   /**
    * Check if papers should be re-extracted on mutation

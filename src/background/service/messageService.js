@@ -12,6 +12,7 @@ import { summarizationHandler } from '../feature/summarizationHandler.js';
 import { TaskService } from './taskService.js';
 import { AiCrawlerTaskHandler } from './taskHandler/aiCrawlerTaskHandler.js';
 import { Task } from '../../model/task.js';
+import { paperMetadataService } from '../feature/paperMetadataService.js';
 
 /**
  * 消息服务类
@@ -94,6 +95,9 @@ export class MessageService {
     
     // Task Service Actions
     handlers.set(MessageActions.ADD_TASK_TO_QUEUE, this.handleAddTaskToQueue.bind(this));
+    
+    // Paper Metadata Service Actions
+    handlers.set(MessageActions.PROCESS_PAPER_ELEMENT_LIST, this.handleProcessPaperElementList.bind(this));
     
     // Setup the single listener with the handler map
     addRuntimeMessageListener(handlers);
@@ -244,25 +248,41 @@ export class MessageService {
    */
   async sendTaskCompletionNotification(taskType, url, platform, success, additionalData = {}) {
     try {
+      logger.log(`[MessageService] 准备发送任务完成通知: taskType=${taskType}, url=${url}, platform=${platform}, success=${success}`);
+      
       // 获取所有标签页
       const tabs = await chrome.tabs.query({});
+      logger.log(`[MessageService] 找到 ${tabs.length} 个标签页`);
       
       // 查找匹配URL的标签页
       const matchingTabs = tabs.filter(tab => {
-        if (!tab.url) return false;
+        if (!tab.url) {
+          logger.log(`[MessageService] 标签页 ${tab.id} 没有URL，跳过`);
+          return false;
+        }
         
         try {
           const tabUrl = new URL(tab.url);
           const targetUrl = new URL(url);
           
+          logger.log(`[MessageService] 标签页 ${tab.id}: ${tabUrl.hostname}${tabUrl.pathname} vs 目标: ${targetUrl.hostname}${targetUrl.pathname}`);
+          
           // 比较域名和路径（忽略查询参数和锚点）
-          return tabUrl.hostname === targetUrl.hostname && 
-                 tabUrl.pathname === targetUrl.pathname;
+          const matches = tabUrl.hostname === targetUrl.hostname && 
+                         tabUrl.pathname === targetUrl.pathname;
+          
+          if (matches) {
+            logger.log(`[MessageService] 标签页 ${tab.id} URL匹配成功`);
+          }
+          
+          return matches;
         } catch (error) {
-          logger.error('[MessageService] URL parsing error:', error);
+          logger.error(`[MessageService] 标签页 ${tab.id} URL解析错误:`, error);
           return false;
         }
       });
+
+      logger.log(`[MessageService] 找到 ${matchingTabs.length} 个匹配的标签页`);
 
       const notificationData = {
         taskType,
@@ -276,20 +296,58 @@ export class MessageService {
       // 向匹配的标签页发送通知
       for (const tab of matchingTabs) {
         try {
+          logger.log(`[MessageService] 正在向标签页 ${tab.id} 发送通知...`);
           await sendMessageToContentScript(tab.id, MessageActions.TASK_COMPLETION_NOTIFICATION, notificationData);
-          logger.log(`[MessageService] Task completion notification sent to tab ${tab.id}`);
+          logger.log(`[MessageService] 标签页 ${tab.id} 通知发送成功`);
         } catch (error) {
-          logger.error(`[MessageService] Failed to send notification to tab ${tab.id}:`, error);
+          logger.error(`[MessageService] 向标签页 ${tab.id} 发送通知失败:`, error);
         }
       }
 
       if (matchingTabs.length === 0) {
-        logger.warn(`[MessageService] No matching tabs found for URL: ${url}`);
+        logger.warn(`[MessageService] 没有找到匹配URL的标签页: ${url}`);
+        logger.log(`[MessageService] 所有标签页URL列表:`);
+        tabs.forEach(tab => {
+          if (tab.url) {
+            logger.log(`  - 标签页 ${tab.id}: ${tab.url}`);
+          }
+        });
       }
 
     } catch (error) {
-      logger.error('[MessageService] Failed to send task completion notification:', error);
+      logger.error('[MessageService] 发送任务完成通知失败:', error);
     }
+  }
+
+  /**
+   * 处理论文元素列表处理消息
+   */
+  async handleProcessPaperElementList(data, sender, sendResponse) {
+    try {
+      logger.log('[MessageService] Received paper element list processing request:', data);
+      
+      const { sourceDomain, pageType, htmlElementList } = data;
+      
+      // 调用论文元数据服务处理论文元素列表
+      const result = await paperMetadataService.processPaperElementList(
+        sourceDomain, 
+        pageType, 
+        htmlElementList
+      );
+      
+      sendResponse({
+        success: result,
+        message: result ? '论文元素列表处理成功' : '论文元素列表处理失败'
+      });
+      
+    } catch (error) {
+      logger.error('[MessageService] Failed to process paper element list:', error);
+      sendResponse({ 
+        success: false, 
+        error: error.message || '处理论文元素列表时发生未知错误'
+      });
+    }
+    return true;
   }
 
   /**

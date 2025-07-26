@@ -149,3 +149,22 @@ export const PAGE_TYPE = {
   SEARCH_RESULTS: 'search_results',      // 搜索结果页
   PAPER_DETAIL: 'paper_detail'           // 论文详情页
 };
+
+/**
+ * 提取器类型常量
+ */
+export const EXTRACTOR_TYPE = {
+  PAPER_ITEM: 'paper_item',              // 论文项提取器
+  TITLE: 'title',                        // 题目提取器
+  PDF: 'pdf',                            // PDF提取器
+  ABSTRACT: 'abstract',                  // 摘要提取器
+  ALL_VERSIONS_LINK: 'all_versions_link' // 所有版本链接提取器
+};
+
+/**
+ * 选择器模式常量
+ */
+export const SELECTOR_MODE = {
+  CSS: 'css',                            // CSS选择器模式
+  REGEX: 'regex'                         // 正则表达式模式
+};
