@@ -1,147 +1,47 @@
-# AI爬虫任务处理器
+# TaskHandler层文档
 
-这是一个继承自BaseHandler的AI爬虫任务处理器，专门用于处理AI驱动的网页爬虫任务，特别是针对学术论文平台的智能元素提取。
+## AiExtractorTaskHandler AI提取任务处理器
 
-## 最新功能更新 (2024)
+功能定位：
+专门处理AI内容提取相关的任务，包括论文元数据提取、内容分析等。
 
-### 论文元素爬取任务 (`PAPER_ELEMENT_CRAWLER`)
+支持的任务类型：
+- `PAPER_METADATA_EXTRACTION`: 论文元数据提取任务
 
-**核心特性：**
-- **灵活的样本处理策略**：不再要求最少样本数量，有多少论文项就处理多少
-- **智能样本分配**：
-  - 1个样本：全部用于学习，无验证
-  - 2个样本：1个学习，1个验证  
-  - 3个样本：2个学习，1个验证
-  - 4个以上：约一半学习，其余验证
-- **宽松验证策略**：采用30%成功率阈值，即使验证失败也不中止任务
-- **多阶段处理流程**：提取论文项 → 生成子选择器 → 灵活验证 → 保存配置
+核心功能：
+1. **论文元数据提取**：从论文对象中提取标题、摘要、作者等元数据信息
+2. **HTML内容解析**：对论文的HTML内容进行压缩和结构化处理
+3. **AI服务集成**：调用AI服务进行智能内容提取和分析
+4. **并发处理**：支持多个论文项的并行解析处理
+5. **事件广播**：**新增** - 在论文预处理完成后广播`PAPER_PREPROCESSING_COMPLETED`事件
 
-**任务参数：**
-```javascript
-const paperCrawlerTask = {
-  key: 'crawl_papers_googlescholar',
-  type: 'PAPER_ELEMENT_CRAWLER',
-  params: {
-    url: 'https://scholar.google.com/scholar?q=machine+learning',
-    platform: 'google_scholar',
-    pageHTML: '完整的页面HTML内容',
-    timestamp: Date.now()
-  }
-};
-```
+关键方法：
+- `executePaperMetadataExtraction()`: 执行论文元数据提取任务
+- `processPaperHtml()`: 处理论文HTML内容，包括压缩、元素提取和AI解析
+- `parsePaperItem()`: 解析单个论文项，支持并行处理
 
-**执行流程：**
-1. **阶段一**：从页面HTML提取论文项列表
-2. **阶段二**：基于样本生成子元素选择器（标题、摘要、链接等）
-3. **阶段三**：灵活验证生成的选择器（可选，不强制）
-4. **阶段四**：保存PlatformSelector配置并发送通知
+**最新更新**：
+- **论文预处理完成事件广播**：在创建预处理论文对象后，通过Chrome runtime消息API广播`PAPER_PREPROCESSING_COMPLETED`事件，包含以下数据：
+  - `paper`: 预处理完成的论文对象
+  - `taskKey`: 任务键名
+  - `timestamp`: 完成时间戳
+- **消息集成**：导入并使用MessageActions常量，确保消息类型的一致性
+- **错误处理优化**：对事件广播失败进行容错处理，不影响主要处理流程
 
-**AI智能验证策略：**
-- **AI驱动验证**：使用大语言模型进行选择器提取结果的智能验证
-- **上下文分析**：结合原始论文项HTML、选择器配置和提取结果进行综合判断
-- **精准反馈**：AI可识别提取错误的具体原因并提供选择器优化建议
-- **智能置信度**：为每个提取器提供0.0-1.0的置信度评分
-- **容错机制**：即使AI验证失败也不中止任务，保证系统健壮性
-- **多维度评估**：针对标题、摘要、链接等不同内容类型提供专项验证
+处理流程：
+1. 接收论文元数据提取任务
+2. 获取论文所有版本页面HTML（如果存在）
+3. 解析HTML内容并提取论文项
+4. 并行处理选中的论文项，提取摘要等信息
+5. 创建预处理论文对象
+6. **新增** - 广播论文预处理完成事件
+7. 返回处理结果
 
-## 特性
+## AiCrawlerTaskHandler AI爬虫任务处理器
 
-- 继承自BaseHandler，具备完整的任务队列管理功能
-- 执行队列长度：5个任务
-- 等待队列长度：10个任务
-- 最大并发数：3个任务
-- 不需要持久化存储
-- 支持多种爬虫任务类型
-- 内置速率限制和错误处理
+功能定位：
+专门处理AI驱动的网页内容抓取任务，智能识别和提取网页中的结构化信息。
 
-## 支持的任务类型
-
-1. **论文元素爬取** (`PAPER_ELEMENT_CRAWLER`) - **主要功能**
-   - 智能提取学术论文页面的结构化数据
-   - 自动生成和验证CSS/Regex选择器
-   - 支持Google Scholar等主流学术平台
-   - 灵活的样本处理和验证策略
-
-## 使用方法
-
-### 1. 启动处理器
-
-```javascript
-import { AiCrawlerTaskHandler } from './aiCrawlerTaskHandler.js';
-
-const handler = new AiCrawlerTaskHandler();
-await handler.start();
-```
-
-### 2. 添加论文爬取任务
-
-```javascript
-const paperTask = {
-  key: 'extract_papers_' + Date.now(),
-  type: 'PAPER_ELEMENT_CRAWLER',
-  params: {
-    url: 'https://scholar.google.com/scholar?q=deep+learning',
-    platform: 'google_scholar',
-    pageHTML: document.documentElement.outerHTML,
-    timestamp: Date.now()
-  }
-};
-
-await handler.addTask(paperTask);
-```
-
-### 3. 监控任务执行
-
-```javascript
-// 获取处理器状态
-const status = handler.getStatus();
-console.log('处理器状态:', status);
-
-// 监听任务完成通知
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === 'TASK_COMPLETION_NOTIFICATION') {
-    console.log('任务完成:', message.data);
-  }
-});
-```
-
-### 4. 任务结果示例
-
-```javascript
-{
-  success: true,
-  data: {
-    platformSelector: PlatformSelector实例,
-    elementCount: 15,           // 提取的论文项数量
-    learningSampleCount: 8,     // 学习样本数量
-    validationSampleCount: 7,   // 验证样本数量
-    extractorCount: 4,          // 生成的提取器数量
-    validationPassed: true      // 验证是否通过
-  },
-  message: "成功生成并保存了完整的PlatformSelector，包含 4 个提取器"
-}
-```
-
-### 5. 停止处理器
-
-```javascript
-await handler.stop();
-```
-
-## 技术细节
-
-### 验证策略
-- **成功率阈值**：30%的验证成功率即认为通过
-- **错误容忍**：记录但不阻止任务继续执行
-- **统计报告**：提供详细的验证成功/失败统计
-
-### 样本分配算法
-- 动态调整学习和验证样本比例
-- 保证至少有1个学习样本
-- 充分利用所有可用样本
-
-### 最新修复 (2024)
-- **修复了htmlParserService返回值处理问题**：正确解析extractElements方法返回的对象结构
-- **改进了验证方法**：使用htmlParserService替代直接DOM操作，确保在background script环境中正常工作
-- **增强了错误处理**：对CSS和正则选择器验证失败提供更好的错误处理和日志记录
-- **修复了PlatformSelector key生成不匹配问题**：统一删除platformKey部分，使保存和查询时的key格式保持一致(`${domain}_${pageType}`)，解决了"没有可用的PlatformSelector，创建AI学习任务"的问题
+支持的任务类型：
+- `PAPER_ELEMENT_CRAWLER`: 论文元素抓取任务
+- `PAPER_ELEMENT_INFO_EXTRACTOR`: 论文元素信息提取任务

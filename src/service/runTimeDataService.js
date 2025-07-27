@@ -629,6 +629,63 @@ class RunTimeDataService {
   }
 
   /**
+   * 删除所有任务相关数据
+   * @returns {Object} 删除结果，包含删除的数据统计
+   */
+  async clearAllTaskData() {
+    try {
+      logger.log('[RunTimeDataService] 开始删除所有数据');
+      
+      // 获取所有存储数据
+      const allData = await chrome.storage.local.get(null);
+      const keysToRemove = [];
+      const statistics = {
+        taskQueues: 0,
+        taskHistory: 0,
+        totalKeys: 0
+      };
+      
+      // 找到所有任务相关的键
+      for (const key in allData) {
+        // 任务队列数据
+          keysToRemove.push(key);
+          statistics.taskQueues++;
+      }
+      
+      statistics.totalKeys = keysToRemove.length;
+      
+      if (keysToRemove.length > 0) {
+        // 删除所有任务相关数据
+        await chrome.storage.local.remove(keysToRemove);
+        logger.log(`[RunTimeDataService] 成功删除所有任务数据，统计:`, {
+          删除的键数量: statistics.totalKeys,
+          任务队列数量: statistics.taskQueues,
+          历史记录数量: statistics.taskHistory
+        });
+      } else {
+        logger.log('[RunTimeDataService] 未找到任务相关数据');
+      }
+      
+      // 清除相关缓存
+      // 这里不需要清除CSS选择器和平台选择器缓存，只清除任务相关的缓存
+      
+      return {
+        success: true,
+        statistics: statistics,
+        message: `成功删除 ${statistics.totalKeys} 个任务数据项`
+      };
+      
+    } catch (error) {
+      logger.error('[RunTimeDataService] 删除所有任务数据失败:', error);
+      return {
+        success: false,
+        error: error.message,
+        statistics: { taskQueues: 0, taskHistory: 0, totalKeys: 0 }
+      };
+    }
+  }
+
+  /**
    * 保存PlatformSelector配置
    * @param {PlatformSelector} platformSelector - PlatformSelector对象
    * @returns {boolean} 是否保存成功

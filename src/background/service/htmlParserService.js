@@ -226,6 +226,45 @@ export class HtmlParserService {
   }
 
   /**
+   * 提取HTML中的大文本块
+   * @param {string} html - 完整HTML字符串
+   * @param {number} minLength - 最小文字长度，默认100
+   * @returns {Promise<Array<string>>} 文本块数组
+   */
+  async extractLargeTextBlocks(html, minLength = 100) {
+    try {
+      if (!this.isInitialized) {
+        await this.initialize();
+      }
+
+      if (!html || typeof html !== 'string') {
+        throw new Error('HTML parameter is required and must be a string');
+      }
+
+      logger.log(`[HtmlParserService] Extracting large text blocks (minLength: ${minLength})`);
+      
+      const response = await chrome.runtime.sendMessage({
+        target: 'offscreen',
+        action: 'extractLargeTextBlocks',
+        data: {
+          html,
+          minLength
+        }
+      });
+
+      if (response && response.success) {
+        logger.log(`[HtmlParserService] Successfully extracted ${response.data.textBlocks.length} text blocks`);
+        return response.data.textBlocks;
+      } else {
+        throw new Error(response?.error || 'Unknown error occurred during large text blocks extraction');
+      }
+    } catch (error) {
+      logger.error('[HtmlParserService] Failed to extract large text blocks:', error);
+      throw error;
+    }
+  }
+
+  /**
    * 确保 Offscreen 文档存在
    * @returns {Promise<void>}
    */

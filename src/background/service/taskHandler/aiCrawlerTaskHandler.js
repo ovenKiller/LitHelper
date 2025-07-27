@@ -4,7 +4,7 @@
  */
 
 import { BaseHandler } from '../baseHandler.js';
-import { TASK_STATUS, PERSISTENCE_STRATEGY, SUPPORTED_TASK_TYPES, PAGE_TYPE } from '../../../constants.js';
+import { TASK_STATUS, PERSISTENCE_STRATEGY, AI_CRAWLER_SUPPORTED_TASK_TYPES, AI_EXTRACTOR_SUPPORTED_TASK_TYPES, PAGE_TYPE } from '../../../constants.js';
 import { Task } from '../../../model/task.js';
 import { Result } from '../../../model/Result.js';
 import { Paper } from '../../../model/Paper.js';
@@ -49,7 +49,7 @@ export class AiCrawlerTaskHandler extends BaseHandler {
    * @returns {string[]} 支持的任务类型数组
    */
   getSupportedTaskTypes() {
-    return Object.values(SUPPORTED_TASK_TYPES);
+    return Object.values(AI_CRAWLER_SUPPORTED_TASK_TYPES);
   }
 
   /**
@@ -66,7 +66,7 @@ export class AiCrawlerTaskHandler extends BaseHandler {
 
     // 根据任务类型验证参数
     switch (task.type) {
-      case SUPPORTED_TASK_TYPES.PAPER_ELEMENT_CRAWLER:
+      case AI_CRAWLER_SUPPORTED_TASK_TYPES.PAPER_ELEMENT_CRAWLER:
         return this.validatePaperElementCrawlerTask(task);
       default:
         return false;
@@ -116,7 +116,7 @@ export class AiCrawlerTaskHandler extends BaseHandler {
   async execute(task) {
     try {
       switch (task.type) {
-        case SUPPORTED_TASK_TYPES.PAPER_ELEMENT_CRAWLER:
+        case AI_CRAWLER_SUPPORTED_TASK_TYPES.PAPER_ELEMENT_CRAWLER:
           return await this.executePaperElementCrawler(task);
         default:
           throw new Error(`不支持的任务类型: ${task.type}`);

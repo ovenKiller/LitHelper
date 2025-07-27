@@ -38,19 +38,45 @@ const IGNORE_ELEMENTS = [
 ];
 
 /**
+ * 清理文本中的不可见字符和多余空白
+ * @param {string} text - 原始文本
+ * @returns {string} 清理后的文本
+ */
+function cleanText(text) {
+    if (!text || typeof text !== 'string') {
+        return '';
+    }
+    
+    // 1. 移除不可见字符（保留空格、制表符、换行符进行后续处理）
+    let cleaned = text
+        // 移除其他控制字符，但保留空格、制表符、换行符
+        .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, '')
+        // 将制表符转换为空格
+        .replace(/\t/g, ' ')
+        // 将换行符转换为空格
+        .replace(/[\r\n]/g, ' ')
+        // 将多个连续的空白字符（包括空格、制表符、换行符等）替换为单个空格
+        .replace(/\s+/g, ' ')
+        // 移除首尾空白
+        .trim();
+    
+    return cleaned;
+}
+
+/**
  * 判断文字内容是否有效
  * @param {string} text - 文字内容
  * @param {number} minLength - 最小字符长度
  * @returns {boolean} 是否为有效文字
  */
 function isValidTextContent(text, minLength = 5) {
-    const cleanText = text.trim();
+    const cleanedText = cleanText(text);
     
     // 基础长度检查
-    if (cleanText.length < minLength) return false;
+    if (cleanedText.length < minLength) return false;
     
     // 文字质量检查：必须包含字母或汉字
-    const hasValidChars = /[a-zA-Z\u4e00-\u9fa5]/.test(cleanText);
+    const hasValidChars = /[a-zA-Z\u4e00-\u9fa5]/.test(cleanedText);
     if (!hasValidChars) return false;
     return true;
 }
@@ -253,13 +279,84 @@ function extractTextStructure(domElement, minLength = 20) {
     return buildTextStructure(domElement);
 }
 
-// 导出函数
+function extractLargeTextBlocks(domElement, minLength = 100) {
+    if (!domElement) {
+        console.warn('传入的 domElement 为空');
+        return [];
+    }
+
+    // 如果传入的是document而不是document.body，自动转换
+    if (domElement === document) {
+        console.warn('传入的是document对象，已自动转换为document.body');
+        if (!document.body) {
+            console.error('document.body为null，页面可能未完全加载');
+            return [];
+        }
+        domElement = document.body;
+    }
+    
+    // 检查document.body是否为null
+    if (domElement === document.body && domElement === null) {
+        console.error('document.body为null，页面可能未完全加载');
+        return [];
+    }
+
+    function findBlocksRecursive(element) {
+        if (!element || element.nodeType !== 1) {
+            return [];
+        }
+
+        const tagName = (element.tagName || 'div').toLowerCase();
+        if (IGNORE_ELEMENTS.includes(tagName)) {
+            return [];
+        }
+        try {
+            const style = window.getComputedStyle(element);
+            if (style.display === 'none' || style.visibility === 'hidden') {
+                return [];
+            }
+        } catch (e) {
+            console.warn('无法获取元素样式:', e);
+        }
+
+        let childBlocks = [];
+        for (const child of element.children) {
+            childBlocks = childBlocks.concat(findBlocksRecursive(child));
+        }
+
+        if (childBlocks.length > 0) {
+            return childBlocks;
+        }
+
+        const cleanElement = removeFormatTags(element);
+        if (!cleanElement) {
+            return [];
+        }
+        const originalTextContent = cleanElement.textContent;
+        // 清理文本：移除不可见字符，规范化空白字符
+        const cleanedTextContent = cleanText(originalTextContent);
+
+        if (isValidTextContent(cleanedTextContent, minLength)) {
+            return [cleanedTextContent];
+        }
+
+        return [];
+    }
+
+    return findBlocksRecursive(domElement);
+}
+
+// 导出函数和常量
 export {
     simpleDOMtoXMLStructure,
     parseDocumentToXMLStructure,
     extractTextStructure,
     isValidTextContent,
     removeFormatTags,
-    truncateText
+    truncateText,
+    extractLargeTextBlocks,
+    cleanText,
+    IGNORE_ELEMENTS,
+    FORMAT_TAGS
 };
 

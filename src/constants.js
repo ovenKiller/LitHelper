@@ -55,8 +55,12 @@ export const TASK_TYPE = {
 /**
  * AI爬虫任务类型常量
  */
-export const SUPPORTED_TASK_TYPES = {
+export const AI_CRAWLER_SUPPORTED_TASK_TYPES = {
   PAPER_ELEMENT_CRAWLER: 'paper_element_crawler'
+};
+
+export const AI_EXTRACTOR_SUPPORTED_TASK_TYPES = {
+  PAPER_METADATA_EXTRACTION: 'paper_metadata_extraction'
 };
 
 /**

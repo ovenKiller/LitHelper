@@ -332,6 +332,50 @@ class AIService {
   }
 
   /**
+   * 从论文内容页面提取论文项元素
+   * @param {string} compressedHTML - 压缩后的HTML内容
+   * @param {string} platform - 平台名称
+   * @returns {Promise<Object>} 提取结果
+   */
+  async extractPaperElementsFromAllVersionContent(compressedHTML, title) {
+    try {
+      const prompt = this._createPaperElementExtractionFromAllVersionContentPrompt(compressedHTML, title);
+    
+      const aiResponse = await this.callLLM(prompt);
+      if (!aiResponse.success) {
+        throw new Error(aiResponse.message || '调用AI服务失败');
+      }
+      
+      // 使用封装的方法解析AI返回的JSON
+      let selectorConfig;
+      try {
+        selectorConfig = this._extractAndParseJSON(aiResponse.data);
+      } catch (parseError) {
+        logger.error('AI返回数据解析失败:', aiResponse.data);
+        throw new Error(`AI返回的选择器配置格式无效: ${parseError.message}`);
+      }
+      
+      // 验证返回格式
+      if (!selectorConfig.mode || !selectorConfig.selector) {
+        throw new Error('AI返回的选择器配置缺少必要字段');
+      }
+      
+      return {
+        success: true,
+        data: selectorConfig
+      };
+      
+    } catch (error) {
+      logger.error('从内容页面提取论文项失败:', error);
+      return {
+        success: false,
+        error: error.message || '从内容页面提取论文项失败',
+        data: null
+      };
+    }
+  }
+
+  /**
    * 提取论文项列表
    * @param {string} compressedHTML - 压缩后的HTML内容
    * @param {string} platform - 平台名称
@@ -599,8 +643,76 @@ ${sampleHTMLs}
 
     return contextInfo;
   }
+
+     /**
+    * 从论文内容页面提取论文子元素的AI提示
+    * @param {string} compressedHTML - 压缩后的HTML内容
+    * @param {string} platform - 平台名称
+    * @returns {string} AI提示
+    * @private
+    */
+   _createPaperElementExtractionFromAllVersionContentPrompt(compressedHTML, title) {
+     return `你是一个专业的网页结构分析师，需要分析论文${title} 所有版本页面的列表页，并返回一个能把所有的论文项提取出来的css选择器。
+
+请分析以下HTML结构：
+
+\`\`\`html
+${compressedHTML}
+\`\`\`
+
+任务要求：
+1. 识别页面中的论文条目列表所在的结构
+2. 论文项通常包含标题、作者、摘要、等
+
+请以JSON格式返回结果：
+{
+  "mode": "css", 
+  "selector": "你的选择器字符串"
 }
 
+响应示例：
+{"mode": "css", "selector": ".gs_ri.gs_or.gs_scl"}`;
+  }
+
+  /**
+   * 从文本列表中提取摘要
+   * @param {Array} textList - 文本列表
+   * @returns {Promise<Object>} 提取结果
+   */
+  async extractAbstractFromTextList(textList, title) {
+    const prompt = this._createAbstractExtractionFromTextListPrompt(textList, title);
+    const aiResponse = await this.callLLM(prompt);
+    if (!aiResponse.success) {
+      throw new Error(aiResponse.message || '调用AI服务失败');
+    }
+    let abstractList;
+    try {
+      abstractList = this._extractAndParseJSON(aiResponse.data);
+    } catch (parseError) {
+      logger.error('AI返回的摘要数据解析失败:', aiResponse.data);
+      throw new Error(`AI返回的摘要数据格式无效: ${parseError.message}`);
+    }
+    return abstractList;
+  }
+
+  _createAbstractExtractionFromTextListPrompt(textList, title) {
+    return `你是一个专业的论文摘要判断专家，需要从以下文本列表中提取摘要：
+
+\`\`\`text
+${textList.join('\n\n')}
+\`\`\`
+
+任务要求：
+1. 判断文本列表是否是论文${title}的摘要
+2. 文本列表前面有一个序号，如果你认为该项文本是论文${title}的摘要，则在答案中添加该序号，否则不添加
+
+请以JSON格式返回结果：
+{
+  "abstract_list": [1, 2, 3]
+}
+`;
+}
+}
 // 创建并导出服务实例
 const aiServiceInstance = new AIService();
 export default aiServiceInstance; 

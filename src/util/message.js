@@ -34,9 +34,11 @@ export const MessageActions = {
   // Task related (任务相关)
   ADD_TASK_TO_QUEUE: 'addTaskToQueue',
   TASK_COMPLETION_NOTIFICATION: 'taskCompletionNotification',
+  CLEAR_ALL_TASK_DATA: 'clearAllTaskData',
 
-  // Paper metadata related (论文元数据相关)
-  PROCESS_PAPER_ELEMENT_LIST: 'processPaperElementList',
+  // Paper metadata processing (论文元数据处理相关)
+  PROCESS_PAPERS: 'processPapers',
+  PAPER_PREPROCESSING_COMPLETED: 'paperPreprocessingCompleted',
 
   // Internal/System actions (内部/系统操作)
   OPEN_SETTINGS: 'openSettings',

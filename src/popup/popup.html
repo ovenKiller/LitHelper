@@ -328,12 +328,48 @@
       <button id="save-settings-btn" class="btn">Save Settings</button>
       
       <div class="form-group" style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #e0e0e0;">
+        <label>跨域权限管理</label>
+        
+        <div id="permission-status" style="margin: 8px 0; font-size: 12px; color: #757575;">
+          正在加载权限状态...
+        </div>
+        
+        <button id="test-permission-btn" class="btn" style="background-color: #4285f4; margin-top: 8px;">
+          测试权限请求
+        </button>
+        <div style="font-size: 12px; color: #757575; margin-top: 4px;">
+          测试Google Books等网站的权限请求功能
+        </div>
+        
+        <button id="request-all-permissions-btn" class="btn" style="background-color: #34a853; margin-top: 8px;">
+          请求所有权限
+        </button>
+        <div style="font-size: 12px; color: #757575; margin-top: 4px;">
+          一次性授权访问所有网站（推荐）
+        </div>
+        
+        <button id="diagnose-permissions-btn" class="btn" style="background-color: #9aa0a6; margin-top: 8px;">
+          诊断权限问题
+        </button>
+        <div style="font-size: 12px; color: #757575; margin-top: 4px;">
+          详细检查当前权限状态和问题
+        </div>
+      </div>
+      
+      <div class="form-group" style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #e0e0e0;">
         <label>开发者工具</label>
         <button id="clear-css-selectors-btn" class="btn" style="background-color: #d93025; margin-top: 8px;">
           清除所有CSS选择器
         </button>
         <div style="font-size: 12px; color: #757575; margin-top: 4px;">
           用于测试：删除所有已保存的CSS选择器配置
+        </div>
+        
+        <button id="clear-all-tasks-btn" class="btn" style="background-color: #ea4335; margin-top: 8px;">
+          清除所有任务数据
+        </button>
+        <div style="font-size: 12px; color: #757575; margin-top: 4px;">
+          用于清理：删除所有任务队列和历史记录
         </div>
       </div>
       

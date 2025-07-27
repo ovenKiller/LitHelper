@@ -14,10 +14,11 @@ import SummaryContainer from '../../ui/components/SummaryContainer';
 import { Paper } from '../../../model/Paper';
 import { logger } from '../../../util/logger.js';
 import GoogleScholarElementExtractor from '../../extractors/elementExtractors/googleScholarElementExactor';
-import { PLATFORM_KEYS, getPlatformDisplayName, SUPPORTED_TASK_TYPES, PAGE_TYPE, EXTRACTOR_TYPE } from '../../../constants';
+import { PLATFORM_KEYS, getPlatformDisplayName, AI_CRAWLER_SUPPORTED_TASK_TYPES, AI_EXTRACTOR_SUPPORTED_TASK_TYPES, PAGE_TYPE, EXTRACTOR_TYPE } from '../../../constants';
 import { runTimeDataService } from '../../../service/runTimeDataService.js';
-import { addContentScriptMessageListener, MessageActions } from '../../../util/message.js';
-
+import { addContentScriptMessageListener,sendMessageToBackend, MessageActions } from '../../../util/message.js';
+// 移除错误的导入
+// import { paperMetadataService } from '../../../background/feature/paperMetadataService.js';
 
 class GoogleScholarAdapter extends SearchPlatformAdapter {
   constructor() {
@@ -283,7 +284,7 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
       // 使用已经预准备的PlatformSelector数据
       if (this.cachedPlatformSelector) {
         logger.log(`[GoogleScholarAdapter] 使用预准备的PlatformSelector: ${this.cachedPlatformSelector.getKey()}`);
-        
+        // 目前保存的selector包含论文项的selector和论文项的子元素的selector，但是后者实际上没使用。
         try {
           // 使用已保存的PlatformSelector提取论文数据
           papers = await this.extractPapersWithPlatformSelector(this.cachedPlatformSelector);
@@ -380,15 +381,31 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
       // 为每个论文项提取详细信息
       for (let i = 0; i < paperItemElements.length; i++) {
         const element = paperItemElements[i];
+        let title = `论文 ${i + 1}`; // 默认标题，放在外层作用域
+        
+        logger.log(`[GoogleScholarAdapter] 开始提取论文项 ${i + 1}/${paperItemElements.length}`);
         
         try {
+          // 验证element有效性
+          if (!element) {
+            logger.warn(`[GoogleScholarAdapter] 论文项 ${i} 的element为null/undefined`);
+            continue;
+          }
+
           // 提取标题
-          const titles = platformSelector.extract(EXTRACTOR_TYPE.TITLE, element) || [];
-          const title = titles.length > 0 ? titles[0].trim() : `论文 ${i + 1}`;
+          const titleElement = element.querySelector('[id]');
+          if (titleElement && titleElement.textContent) {
+            title = titleElement.textContent.trim();
+            if (!title) {
+              title = `论文 ${i + 1}`;
+            }
+          }
+          
+          logger.log(`[GoogleScholarAdapter] 论文 ${i + 1} 标题: "${title}"`);
           
           // 提取摘要
-          const abstracts = platformSelector.extract(EXTRACTOR_TYPE.ABSTRACT, element) || [];
-          const abstract = abstracts.length > 0 ? abstracts[0].trim() : '';
+          const abstractElement = element.querySelector('.gs_rs');
+          const abstract = abstractElement ? abstractElement.textContent.trim() : '';
           
           // 提取All Versions链接
           const allVersionsLinkElement = Array.from(element.querySelectorAll('a'))
@@ -398,17 +415,53 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
               const isChinese = text.includes('所有') && text.includes('版本');
               return isEnglish || isChinese;
             });
-          const allVersionsUrl = allVersionsLinkElement ? allVersionsLinkElement.href : '';
+          
+          // 确保allVersionsUrl是绝对路径
+          let allVersionsUrl = '';
+          if (allVersionsLinkElement) {
+            const href = allVersionsLinkElement.getAttribute('href');
+            if (href) {
+              try {
+                // 使用URL构造函数将相对路径转换为绝对路径
+                allVersionsUrl = new URL(href, window.location.origin).href;
+              } catch (error) {
+                logger.warn(`[GoogleScholarAdapter] 无法解析All Versions URL: ${href}`, error);
+                allVersionsUrl = '';
+              }
+            }
+          }
           
           // 提取PDF链接
           const pdfLinkElement = Array.from(element.querySelectorAll('a')).find(
-            a => a.href.toLowerCase().endsWith('.pdf')
+            a => {
+              const href = a.getAttribute('href');
+              return href && href.toLowerCase().endsWith('.pdf');
+            }
           );
-          const pdfUrl = pdfLinkElement ? pdfLinkElement.href : '';
+          
+          // 确保pdfUrl是绝对路径
+          let pdfUrl = '';
+          if (pdfLinkElement) {
+            const href = pdfLinkElement.getAttribute('href');
+            if (href) {
+              try {
+                // 使用URL构造函数将相对路径转换为绝对路径
+                pdfUrl = new URL(href, window.location.origin).href;
+              } catch (error) {
+                logger.warn(`[GoogleScholarAdapter] 无法解析PDF URL: ${href}`, error);
+                pdfUrl = '';
+              }
+            }
+          }
+          // 验证关键数据
+          if (!title || title.trim() === '') {
+            logger.warn(`[GoogleScholarAdapter] 论文项 ${i} 标题为空，使用默认标题`);
+            title = `论文 ${i + 1}`;
+          }
           
           // 创建论文对象
           const paper = new Paper({
-            id: `gs_paper_${i}`,
+            id: title,
             title: title,
             abstract: abstract,
             allVersionsUrl: allVersionsUrl,
@@ -418,56 +471,66 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
             element: element
           });
           
+          // 验证创建的Paper对象
+          if (!paper.id) {
+            logger.error(`[GoogleScholarAdapter] 创建的Paper对象ID为undefined`, {
+              paperIndex: i,
+              title: title,
+              paperObject: paper
+            });
+            paper.id = `论文 ${i + 1}`; // 修复ID
+          }
+          
+          logger.log(`[GoogleScholarAdapter] 成功提取论文 ${i + 1}:`, {
+            id: paper.id,
+            title: paper.title,
+            hasAbstract: !!paper.abstract,
+            hasElement: !!paper.element
+          });
+          
           papers.push(paper);
           
         } catch (extractError) {
           logger.warn(`[GoogleScholarAdapter] 提取论文项 ${i} 的详细信息时发生错误:`, extractError);
           
           // 即使提取失败，也创建一个基本的论文对象
+          const fallbackId = title || `论文 ${i + 1}`;
           const fallbackPaper = new Paper({
-            id: `gs_paper_${i}`,
-            title: `论文 ${i + 1}`,
+            id: fallbackId,
+            title: fallbackId,
             platform: 'google_scholar',
-            sourceUrl: window.location.href
+            sourceUrl: window.location.href,
+            element: element // 确保element始终有值
           });
-          fallbackPaper.element = element;
+          
+          logger.log(`[GoogleScholarAdapter] 创建fallback论文对象:`, {
+            id: fallbackPaper.id,
+            title: fallbackPaper.title,
+            hasElement: !!fallbackPaper.element
+          });
           
           papers.push(fallbackPaper);
         }
       }
       
       logger.log(`[GoogleScholarAdapter] 成功提取 ${papers.length} 篇论文的详细信息`);
+      
+      // 最终验证所有paper对象
+      for (let i = 0; i < papers.length; i++) {
+        const paper = papers[i];
+        if (!paper.id) {
+          logger.error(`[GoogleScholarAdapter] 发现ID为undefined的论文对象`, {
+            paperIndex: i,
+            paper: paper
+          });
+          paper.id = `论文 ${i + 1}`;
+        }
+      }
+      
       return papers;
       
     } catch (error) {
       logger.error(`[GoogleScholarAdapter] 使用PlatformSelector提取论文时发生错误:`, error);
-      throw error;
-    }
-  }
-
-  /**
-   * 使用指定的CSS选择器提取论文（保留用于向后兼容）
-   * @param {string} selector - CSS选择器字符串
-   * @returns {Promise<Array>} 提取的论文数组
-   */
-  async extractPapersWithSelector(selector) {
-    try {
-      // 使用CSS选择器直接从页面提取元素
-      const elements = document.querySelectorAll(selector);
-      
-      if (elements.length === 0) {
-        logger.warn(`[GoogleScholarAdapter] 选择器 "${selector}" 未匹配到任何元素`);
-        return [];
-      }
-      
-      logger.log(`[GoogleScholarAdapter] 选择器 "${selector}" 匹配到 ${elements.length} 个元素`);
-      
-      // 将NodeList转换为数组并提取论文信息
-      const resultItems = Array.from(elements);
-      return this.extractPapersFromElements(resultItems, 'google_scholar', 'gs');
-      
-    } catch (error) {
-      logger.error(`[GoogleScholarAdapter] 使用选择器提取论文时发生错误:`, error);
       throw error;
     }
   }
@@ -487,10 +550,10 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
       };
 
       // 生成任务键名
-      const taskKey = `paper_element_crawler_${this.getPlatformKey()}_${Date.now()}`;
+      const taskKey = `${AI_CRAWLER_SUPPORTED_TASK_TYPES.PAPER_ELEMENT_CRAWLER}_${this.getPlatformKey()}`;
 
       // 通过消息发送到后台
-      const result = await this.sendTaskToBackground(taskKey, SUPPORTED_TASK_TYPES.PAPER_ELEMENT_CRAWLER, taskParams);
+      const result = await this.sendTaskToBackground(taskKey, AI_CRAWLER_SUPPORTED_TASK_TYPES.PAPER_ELEMENT_CRAWLER, taskParams);
       logger.log('Paper element crawler task created successfully:', result);
       if (result.success) {
         logger.log('Paper element crawler task created successfully:', taskKey);
@@ -511,44 +574,44 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
    * @returns {Promise<void>}
    */
   async sendPaperElementsToMetadataService(papers) {
+    logger.log(`[GoogleScholarAdapter] 准备发送 ${papers?.length || 0} 个论文对象到元数据服务`);
+
+    // 验证输入参数
+    if (!Array.isArray(papers)) {
+      logger.error(`[GoogleScholarAdapter] 论文数据发送失败: papers参数不是数组`, {
+        papersType: typeof papers,
+        papers: papers
+      });
+      return;
+    }
+
+    if (papers.length === 0) {
+      logger.warn(`[GoogleScholarAdapter] 论文数组为空，无需处理`);
+      return;
+    }
+
     try {
-      logger.log(`[GoogleScholarAdapter] 准备发送 ${papers.length} 个论文元素到元数据服务`);
-      
-      // 提取论文元素的HTML字符串
-      const htmlElementList = papers.map(paper => {
-        if (paper.element && paper.element.outerHTML) {
-          return paper.element.outerHTML;
-        } else {
-          logger.warn(`[GoogleScholarAdapter] 论文 ${paper.id} 缺少DOM元素`);
-          return '';
-        }
-      }).filter(html => html.length > 0); // 过滤掉空字符串
-      
-      if (htmlElementList.length === 0) {
-        logger.warn('[GoogleScholarAdapter] 没有有效的HTML元素可发送');
-        return;
-      }
-      
-      // 准备消息数据
-      const messageData = {
-        sourceDomain: this.getPlatformKey(),  // 来源域名使用平台键名
-        pageType: PAGE_TYPE.SEARCH_RESULTS,   // 页面类型为搜索结果页
-        htmlElementList: htmlElementList      // HTML字符串列表
-      };
-      
-      // 导入消息模块并发送消息
-      const { sendMessageToBackend, MessageActions } = await import('../../../util/message.js');
-      
-      const result = await sendMessageToBackend(MessageActions.PROCESS_PAPER_ELEMENT_LIST, messageData);
-      
-      if (result.success) {
-        logger.log(`[GoogleScholarAdapter] 论文元素列表发送成功: ${result.message}`);
+      // 序列化论文数据，移除DOM元素引用
+      const serializedPapers = papers.map(paper => ({
+        ...paper,
+        html: paper.element?.outerHTML || '', // 保存HTML内容
+        element: undefined // 移除DOM元素引用，避免序列化问题
+      }));
+
+      // 通过消息传递调用后台的paperMetadataService
+      const result = await sendMessageToBackend(MessageActions.PROCESS_PAPERS, {
+        sourceDomain: this.getPlatformKey(),
+        pageType: PAGE_TYPE.SEARCH_RESULTS,
+        papers: serializedPapers
+      });
+
+      if (result?.success) {
+        logger.log(`[GoogleScholarAdapter] 成功将 ${papers.length} 个论文对象发送到元数据服务`);
       } else {
-        logger.error(`[GoogleScholarAdapter] 论文元素列表发送失败: ${result.error}`);
+        logger.error(`[GoogleScholarAdapter] 元数据服务处理论文对象失败:`, result?.error);
       }
-      
     } catch (error) {
-      logger.error('[GoogleScholarAdapter] 发送论文元素列表时发生错误:', error);
+      logger.error(`[GoogleScholarAdapter] 发送论文数据到元数据服务时发生错误:`, error);
     }
   }
 
@@ -561,8 +624,6 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
    */
   async sendTaskToBackground(taskKey, taskType, taskParams) {
     try {
-      // 导入消息模块
-      const { sendMessageToBackend, MessageActions } = await import('../../../util/message.js');
       
       // 发送消息到后台
       const result = await sendMessageToBackend(MessageActions.ADD_TASK_TO_QUEUE, {
@@ -604,64 +665,6 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
     }
   }
 
-  /**
-   * 从所有版本中提取论文信息
-   * @param {HTMLElement} paperItem - 论文元素
-   * @returns {Promise<Object|null>} 提取的论文信息
-   */
-  async extractPaperFromAllVersions(paperItem) {
-    try {
-      const allVersionsLink = Array.from(paperItem.querySelectorAll('.gs_fl a'))
-        .find(a => {
-          const text = a.textContent.toLowerCase();
-          const versionPatterns = [
-            /all\s+\d+\s+versions?/i,
-            /all\s+versions?/i,
-            /versions?/i
-          ];
-          const hasVersionCount = /\d+\s+versions?/i.test(text);
-          return versionPatterns.some(pattern => pattern.test(text)) || hasVersionCount;
-        });
-      
-      if (!allVersionsLink) {
-        logger.log('No "All versions" link found');
-        return null;
-      }
-      
-      logger.log("Found all versions link:", allVersionsLink.href);
-      
-      // 保存所有版本的URL
-      const allVersionsUrl = allVersionsLink.href;
-
-      const response = await fetch(allVersionsUrl);
-      const text = await response.text();
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(text, 'text/html');
-
-      const paperItems = doc.querySelectorAll('.gs_r.gs_or.gs_scl');
-      for (const item of paperItems) {
-        const links = item.querySelectorAll('a');
-        for (const link of links) {
-          if (link.href.includes('arxiv.org')) {
-            const extractor = this.extractorFactory.getAdapter(link.href);
-            if (extractor) {
-              const metadata = await extractor.extractMetadata();
-              // 添加allVersionsUrl属性
-              if (metadata) {
-                metadata.allVersionsUrl = allVersionsUrl;
-              }
-              return metadata;
-            }
-          }
-        }
-      }
-      
-      return null;
-    } catch (error) {
-      logger.error('Error extracting paper from all versions:', error);
-      return null;
-    }
-  }
 }
 
 export default GoogleScholarAdapter; 

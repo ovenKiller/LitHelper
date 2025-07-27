@@ -115,6 +115,21 @@ if (result.success) {
 
 **返回:** `Promise<number>` - 匹配的元素数量
 
+#### `extractLargeTextBlocks(html, minLength)`
+从HTML中提取长度超过`minLength`的大文本块。
+
+**新增功能**: 现在包含完整的文本清理功能：
+- 自动过滤不可见字符（如`\n`、多余空格等）
+- 将连续的空白字符标准化为单个空格
+- 在判断文本长度和有效性时先进行清理再判断
+- 返回的文本块已经过清理和标准化处理
+
+**参数:**
+- `html` (string): HTML字符串
+- `minLength` (number): 最小文本长度，默认为100
+
+**返回:** `Promise<Array<string>>` - 清理后的文本块数组
+
 ### 管理方法
 
 #### `initialize()`

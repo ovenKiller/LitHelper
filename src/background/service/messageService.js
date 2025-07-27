@@ -11,8 +11,12 @@ import { paperBoxManager } from '../feature/paperBoxManager.js';
 import { summarizationHandler } from '../feature/summarizationHandler.js';
 import { TaskService } from './taskService.js';
 import { AiCrawlerTaskHandler } from './taskHandler/aiCrawlerTaskHandler.js';
+import { AiExtractorTaskHandler } from './taskHandler/aiExtractorTaskHandler.js';
 import { Task } from '../../model/task.js';
 import { paperMetadataService } from '../feature/paperMetadataService.js';
+import { AI_CRAWLER_SUPPORTED_TASK_TYPES, AI_EXTRACTOR_SUPPORTED_TASK_TYPES } from '../../constants.js';
+import { runTimeDataService } from '../../service/runTimeDataService.js';
+import { httpService } from './httpService.js';
 
 /**
  * 消息服务类
@@ -23,6 +27,7 @@ export class MessageService {
     this.isInitialized = false;
     this.taskService = null;
     this.aiCrawlerTaskHandler = null;
+    this.aiExtractorTaskHandler = null;
   }
 
   /**
@@ -61,12 +66,17 @@ export class MessageService {
       
       // 创建AI爬虫任务处理器
       this.aiCrawlerTaskHandler = new AiCrawlerTaskHandler();
+      this.aiExtractorTaskHandler = new AiExtractorTaskHandler();
       
       // 注册处理器
-      this.taskService.registerHandler('paper_element_crawler', this.aiCrawlerTaskHandler);
+      this.taskService.registerHandler(AI_CRAWLER_SUPPORTED_TASK_TYPES.PAPER_ELEMENT_CRAWLER, this.aiCrawlerTaskHandler);
+      this.taskService.registerHandler(AI_EXTRACTOR_SUPPORTED_TASK_TYPES.PAPER_METADATA_EXTRACTION, this.aiExtractorTaskHandler);
       
       // 启动任务服务
       await this.taskService.start();
+      
+      // 注入taskService到paperMetadataService中
+      paperMetadataService.setTaskService(this.taskService);
       
       logger.log('[MessageService] Task service initialized successfully');
     } catch (error) {
@@ -95,9 +105,16 @@ export class MessageService {
     
     // Task Service Actions
     handlers.set(MessageActions.ADD_TASK_TO_QUEUE, this.handleAddTaskToQueue.bind(this));
+    handlers.set(MessageActions.CLEAR_ALL_TASK_DATA, this.handleClearAllTaskData.bind(this));
+    
+    // Permission Management Actions
+    handlers.set('testPermissionRequest', this.handleTestPermissionRequest.bind(this));
+    handlers.set('diagnosePermissions', this.handleDiagnosePermissions.bind(this));
     
     // Paper Metadata Service Actions
     handlers.set(MessageActions.PROCESS_PAPER_ELEMENT_LIST, this.handleProcessPaperElementList.bind(this));
+    handlers.set(MessageActions.PROCESS_PAPERS, this.handleProcessPapers.bind(this));
+    handlers.set(MessageActions.PAPER_PREPROCESSING_COMPLETED, this.handlePaperPreprocessingCompleted.bind(this));
     
     // Setup the single listener with the handler map
     addRuntimeMessageListener(handlers);
@@ -131,6 +148,7 @@ export class MessageService {
     //   sendResponse({ success: false, error: error.message });
     // }
     // return true;
+    return true;
   }
 
   /**
@@ -218,6 +236,85 @@ export class MessageService {
       sendResponse({
         success: false,
         error: error.message || '添加任务失败'
+      });
+    }
+    return true;
+  }
+
+  /**
+   * 处理清除所有任务数据消息
+   */
+  async handleClearAllTaskData(data, sender, sendResponse) {
+    try {
+      logger.log('[MessageService] 收到清除所有任务数据请求');
+      
+      // 调用runTimeDataService清除所有任务数据
+      const result = await runTimeDataService.clearAllTaskData();
+      
+      if (result.success) {
+        logger.log('[MessageService] 成功清除所有任务数据:', result.statistics);
+        sendResponse({
+          success: true,
+          statistics: result.statistics,
+          message: result.message
+        });
+      } else {
+        logger.error('[MessageService] 清除任务数据失败:', result.error);
+        sendResponse({
+          success: false,
+          error: result.error
+        });
+      }
+    } catch (error) {
+      logger.error('[MessageService] 处理清除任务数据消息时发生错误:', error);
+      sendResponse({
+        success: false,
+        error: error.message || '清除任务数据失败'
+      });
+    }
+    return true;
+  }
+
+  /**
+   * 处理测试权限请求消息
+   */
+  async handleTestPermissionRequest(data, sender, sendResponse) {
+    try {
+      logger.log('[MessageService] 收到测试权限请求:', data.url);
+      
+      // 调用httpService测试权限请求
+      const result = await httpService.testPermissionRequest(data.url);
+      
+      sendResponse({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      logger.error('[MessageService] 处理测试权限请求时发生错误:', error);
+      sendResponse({
+        success: false,
+        error: error.message || '测试权限请求失败'
+      });
+    }
+    return true;
+  }
+
+  /**
+   * 处理权限诊断消息
+   */
+  async handleDiagnosePermissions(data, sender, sendResponse) {
+    try {
+      logger.log('[MessageService] 收到权限诊断请求');
+      
+      // 调用httpService进行权限诊断
+      const result = await httpService.diagnosePermissions();
+      
+      sendResponse(result);
+    } catch (error) {
+      logger.error('[MessageService] 处理权限诊断时发生错误:', error);
+      sendResponse({
+        success: false,
+        error: error.message || '权限诊断失败'
       });
     }
     return true;
@@ -324,28 +421,95 @@ export class MessageService {
    */
   async handleProcessPaperElementList(data, sender, sendResponse) {
     try {
-      logger.log('[MessageService] Received paper element list processing request:', data);
+      logger.log('[MessageService] Received paper data processing request:', data);
       
-      const { sourceDomain, pageType, htmlElementList } = data;
+      const { sourceDomain, pageType, papers } = data;
       
-      // 调用论文元数据服务处理论文元素列表
-      const result = await paperMetadataService.processPaperElementList(
+      // 调用论文元数据服务处理论文对象列表
+      const result = await paperMetadataService.processPapers(
         sourceDomain, 
         pageType, 
-        htmlElementList
+        papers
       );
       
       sendResponse({
         success: result,
-        message: result ? '论文元素列表处理成功' : '论文元素列表处理失败'
+        message: result ? '论文数据处理成功' : '论文数据处理失败'
       });
       
     } catch (error) {
-      logger.error('[MessageService] Failed to process paper element list:', error);
+      logger.error('[MessageService] Failed to process paper data:', error);
       sendResponse({ 
         success: false, 
-        error: error.message || '处理论文元素列表时发生未知错误'
+        error: error.message || '处理论文数据时发生未知错误'
       });
+    }
+    return true;
+  }
+
+  /**
+   * 处理论文列表处理消息
+   */
+  async handleProcessPapers(data, sender, sendResponse) {
+    try {
+      logger.log('[MessageService] 收到处理论文列表请求:', data);
+      
+      const { sourceDomain, pageType, papers } = data;
+      
+      // 添加详细的调试信息
+      logger.log('[MessageService] 请求详情:', {
+        sourceDomain,
+        pageType,
+        papersCount: papers?.length || 0,
+        paperMetadataServiceAvailable: !!paperMetadataService,
+        taskServiceInjected: !!paperMetadataService?.taskService
+      });
+      
+      // 调用论文元数据服务处理论文对象列表
+      const result = await paperMetadataService.processPapers(
+        sourceDomain, 
+        pageType, 
+        papers
+      );
+      
+      logger.log('[MessageService] 论文处理结果:', { result });
+      
+      sendResponse({
+        success: result,
+        message: result ? '论文列表处理成功' : '论文列表处理失败'
+      });
+      
+    } catch (error) {
+      logger.error('[MessageService] 处理论文列表失败:', error);
+      sendResponse({ 
+        success: false, 
+        error: error.message || '处理论文列表时发生未知错误'
+      });
+    }
+    return true;
+  }
+
+  /**
+   * 处理论文预处理完成消息
+   */
+  async handlePaperPreprocessingCompleted(data, sender, sendResponse) {
+    try {
+      logger.log('[MessageService] 收到论文预处理完成通知:', data);
+      
+      // 调用paperMetadataService处理预处理完成事件
+      const result = await paperMetadataService.handlePaperPreprocessingCompleted(data);
+      
+      if (result) {
+        logger.log('[MessageService] 论文预处理完成事件处理成功');
+        sendResponse({ success: true, message: '论文预处理完成事件处理成功' });
+      } else {
+        logger.error('[MessageService] 论文预处理完成事件处理失败');
+        sendResponse({ success: false, error: '论文预处理完成事件处理失败' });
+      }
+      
+    } catch (error) {
+      logger.error('[MessageService] 处理论文预处理完成消息失败:', error);
+      sendResponse({ success: false, error: error.message || '处理论文预处理完成失败' });
     }
     return true;
   }

@@ -43,12 +43,15 @@ export class Controller {
         // Special handling for the 'active' checkbox
         if (updates.active !== undefined) {
             await this.configService.toggleModelActive(index, updates.active);
+            await this.configService.saveConfig();
+            await this.renderPage(); // Re-render to update dependent parts like the default model selector
+            this.view.showSaveStatus('Settings saved successfully!');
         } else {
+            // For other fields, just update and save without re-rendering
             await this.configService.updateModel(index, updates);
+            await this.configService.saveConfig();
+            this.view.showSaveStatus('Settings saved successfully!');
         }
-        await this.configService.saveConfig();
-        await this.renderPage(); // Re-render to update dependent parts like the default model selector
-        this.view.showSaveStatus('Settings saved successfully!');
     } catch (error) {
         logger.error('Failed to update model settings:', error);
         this.view.showSaveStatus('Failed to save settings.', false);

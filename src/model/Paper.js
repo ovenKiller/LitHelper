@@ -43,10 +43,6 @@ class Paper {
                 (initialData.url ? [initialData.url] : []); // 兼容旧版本的url字段
     /** @type {string} */
     this.pdfUrl = initialData.pdfUrl || '';
-    /** @type {string} */
-    this.publicationDate = initialData.publicationDate || '';
-    /** @type {string} */
-    this.venue = initialData.venue || '';
     /** @type {string[]} */
     this.keywords = initialData.keywords || [];
     /** @type {number} */
@@ -54,12 +50,13 @@ class Paper {
     /** @type {string} */
     this.source = initialData.source || '';
     /** @type {string}  专门在googleScholar平台下使用*/
-    this.googleScholarVersionsUrl = initialData.googleScholarVersionsUrl || '';
+    this.allVersionsUrl = initialData.allVersionsUrl || '';
     /** @type {HTMLElement | null} */
     this.element = initialData.element || null;
     /** @type {string} */
     this.sourceUrl = initialData.sourceUrl || '';
-    
+    /** @type {string} */
+    this.updateTime = initialData.updateTime || new Date().toISOString();
   }
 
   /**

@@ -30,9 +30,14 @@
   "host_permissions": [
     "*://scholar.google.com/*",
     "*://scholar.google.co.uk/*",
+    "*://books.google.com/*",
     "*://ieeexplore.ieee.org/*",
     "*://dl.acm.org/*",
-    "*://arxiv.org/*"
+    "*://arxiv.org/*",
+    "*://cir.nii.ac.jp/*"
+  ],
+  "optional_host_permissions": [
+    "*://*/*"
   ],
   "background": {
     "service_worker": "background.js"
