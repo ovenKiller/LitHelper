@@ -26,7 +26,6 @@ export const MessageActions = {
 
   // Config related (配置相关)
   UPDATE_CONFIG: 'updateConfig',
-  GET_CONFIG: 'getConfig',
 
   // Content script related (内容脚本相关)
   GET_PAPERS: 'getPapers',

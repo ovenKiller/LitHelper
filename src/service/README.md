@@ -49,8 +49,6 @@
 
 1. **平台配置管理**
    - `getPlatformConfig(platformKey)` - 获取平台配置
-   - `getPlatformOptions(platformKey)` - 获取平台选项
-   - `updatePlatformSelectors(platformKey, selectors)` - 更新平台选择器
 
 2. **CSS选择器管理**
    - `saveCssSelector(cssSelector)` - 保存CSS选择器配置

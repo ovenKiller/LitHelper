@@ -103,7 +103,8 @@ class PaperMetadataService {
           title: paper.title,
           pdfUrl: paper.pdfUrl || '',
           abstract: paper.abstract || '',
-          updateTime: paper.updateTime || new Date().toISOString()
+          updateTime: paper.updateTime || new Date().toISOString(),
+          processing: true
         };
         this.paperCache.set(paper.title, paperCacheData);
         logger.log(`[PaperMetadataService] 论文 ${paper.title} 处理成功并已缓存`);
@@ -146,10 +147,6 @@ class PaperMetadataService {
         paperTitle: paper.title,
         htmlLength: taskParams.paper.html?.length || 0
       });
-
-      // 创建任务对象
-      const task = new Task(taskKey, AI_EXTRACTOR_SUPPORTED_TASK_TYPES.PAPER_METADATA_EXTRACTION, taskParams);
-
       // 通过消息系统将任务添加到队列
       // 注意：这里我们无法直接访问messageService，需要通过Chrome运行时API
       const result = await this.sendTaskToQueue(taskKey, AI_EXTRACTOR_SUPPORTED_TASK_TYPES.PAPER_METADATA_EXTRACTION, taskParams);
@@ -331,13 +328,8 @@ class PaperMetadataService {
         return false;
       }
 
-      logger.log(`[PaperMetadataService] 论文数据:`, {
-        id: paper.id,
-        title: paper.title,
-        pdfUrl: paper.pdfUrl || '',
-        abstract: paper.abstract ? `[摘要长度: ${paper.abstract.length}]` : '[无摘要]',
-        updateTime: paper.updateTime
-      });
+      const paper = eventData.paper;
+      logger.log(paper)
 
       // 缓存论文数据
       const cacheSuccess = this.cachePaper(paper);

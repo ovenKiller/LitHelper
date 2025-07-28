@@ -70,19 +70,7 @@ export class StorageService {
     }
   }
 
-  /**
-   * 保存CSS选择器配置
-   * @param {Object} cssSelector CSS选择器对象
-   */
-  async saveCssSelector(cssSelector) {
-    if (!cssSelector || !cssSelector.domain || !cssSelector.pageType) {
-      logger.error('[STORAGE] saveCssSelector: 无效的CSS选择器数据');
-      return false;
-    }
-    const key = cssSelector.getKey();
-    logger.log(`[STORAGE] saveCssSelector: 保存CSS选择器 ${key}`);
-    return await this.saveData(`cssSelectors.${key}`, cssSelector);
-  }
+
 
   /**
    * 获取CSS选择器配置

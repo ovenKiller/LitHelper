@@ -6,7 +6,7 @@
 
 import { logger } from '../../util/logger.js';
 import { addRuntimeMessageListener, MessageActions, sendMessageToContentScript } from '../../util/message.js';
-import { configService } from '../../option/configService.js';
+import { configService } from '../../service/configService.js';
 import { paperBoxManager } from '../feature/paperBoxManager.js';
 import { summarizationHandler } from '../feature/summarizationHandler.js';
 import { TaskService } from './taskService.js';
@@ -91,8 +91,6 @@ export class MessageService {
   setupMessageListeners() {
     const handlers = new Map();
     
-    // Config Service Actions
-    handlers.set(MessageActions.GET_CONFIG, this.handleGetConfig.bind(this));
     
     // PaperBox Manager Actions
     handlers.set(MessageActions.GET_PAPER_BOX_DATA, this.handleGetPaperBoxData.bind(this));
@@ -107,9 +105,7 @@ export class MessageService {
     handlers.set(MessageActions.ADD_TASK_TO_QUEUE, this.handleAddTaskToQueue.bind(this));
     handlers.set(MessageActions.CLEAR_ALL_TASK_DATA, this.handleClearAllTaskData.bind(this));
     
-    // Permission Management Actions
-    handlers.set('testPermissionRequest', this.handleTestPermissionRequest.bind(this));
-    handlers.set('diagnosePermissions', this.handleDiagnosePermissions.bind(this));
+
     
     // Paper Metadata Service Actions
     handlers.set(MessageActions.PROCESS_PAPER_ELEMENT_LIST, this.handleProcessPaperElementList.bind(this));
@@ -122,19 +118,6 @@ export class MessageService {
     logger.log('[MessageService] Message listeners set up successfully');
   }
 
-  /**
-   * 处理获取配置消息
-   */
-  async handleGetConfig(data, sender, sendResponse) {
-    try {
-      const config = await configService.getConfig();
-      sendResponse(config);
-    } catch (error) {
-      logger.error('[MessageService] Failed to get config:', error);
-      sendResponse({ success: false, error: error.message });
-    }
-    return true;
-  }
 
   /**
    * 处理获取论文盒数据消息
@@ -221,8 +204,14 @@ export class MessageService {
       // 创建任务对象
       const task = new Task(taskKey, taskType, taskParams);
       
-      // 添加到任务队列
-      await this.taskService.addTask(task);
+      // 添加到任务队列 - 移除不必要的await，因为TaskService.addTask是同步的
+      // 但handler.addTask可能是异步的，所以需要等待返回的Promise
+      const addedTask = this.taskService.addTask(task);
+      
+      // 如果返回的是Promise，等待它完成
+      if (addedTask && typeof addedTask.then === 'function') {
+        await addedTask;
+      }
       
       logger.log(`[MessageService] Task added to queue: ${taskKey}`);
       
@@ -275,50 +264,7 @@ export class MessageService {
     return true;
   }
 
-  /**
-   * 处理测试权限请求消息
-   */
-  async handleTestPermissionRequest(data, sender, sendResponse) {
-    try {
-      logger.log('[MessageService] 收到测试权限请求:', data.url);
-      
-      // 调用httpService测试权限请求
-      const result = await httpService.testPermissionRequest(data.url);
-      
-      sendResponse({
-        success: true,
-        data: result
-      });
-    } catch (error) {
-      logger.error('[MessageService] 处理测试权限请求时发生错误:', error);
-      sendResponse({
-        success: false,
-        error: error.message || '测试权限请求失败'
-      });
-    }
-    return true;
-  }
 
-  /**
-   * 处理权限诊断消息
-   */
-  async handleDiagnosePermissions(data, sender, sendResponse) {
-    try {
-      logger.log('[MessageService] 收到权限诊断请求');
-      
-      // 调用httpService进行权限诊断
-      const result = await httpService.diagnosePermissions();
-      
-      sendResponse(result);
-    } catch (error) {
-      logger.error('[MessageService] 处理权限诊断时发生错误:', error);
-      sendResponse({
-        success: false,
-        error: error.message || '权限诊断失败'
-      });
-    }
-    return true;
-  }
 
   /**
    * 获取任务服务状态

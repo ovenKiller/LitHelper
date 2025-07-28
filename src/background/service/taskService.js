@@ -5,7 +5,6 @@
 
 import { Task } from '../../model/task.js';
 import { BaseHandler } from './baseHandler.js';
-import { TASK_TYPE } from '../../constants.js';
 
 export class TaskService {
   /**
@@ -232,21 +231,6 @@ export class TaskService {
     return queueInfo;
   }
 
-  /**
-   * 获取任务统计信息
-   * @param {number} days - 统计天数
-   * @returns {Promise<Object>} 统计信息
-   */
-  async getTaskStatistics(days = 7) {
-    const statistics = {};
-    
-    // 聚合所有处理器的统计信息
-    for (const [type, handler] of this.handlerRegistry.entries()) {
-      statistics[type] = await handler.getTaskStatistics(days);
-    }
-    
-    return statistics;
-  }
 
   /**
    * 获取指定处理器的状态

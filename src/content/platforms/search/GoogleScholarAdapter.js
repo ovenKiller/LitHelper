@@ -8,7 +8,6 @@
  */
 
 import SearchPlatformAdapter from '../base/SearchPlatformAdapter';
-import AdapterFactory from '../AdapterFactory';
 import PaperControls from '../../ui/components/PaperControls';
 import SummaryContainer from '../../ui/components/SummaryContainer';
 import { Paper } from '../../../model/Paper';
@@ -23,7 +22,6 @@ import { addContentScriptMessageListener,sendMessageToBackend, MessageActions } 
 class GoogleScholarAdapter extends SearchPlatformAdapter {
   constructor() {
     super();
-    this.extractorFactory = AdapterFactory;
     this.uiManager = null; // 将在setPlatformManager中设置
     this.elementExtractor = new GoogleScholarElementExtractor(); // 添加元素提取器
     this.setupMessageListeners(); // 设置消息监听器
@@ -288,7 +286,6 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
         try {
           // 使用已保存的PlatformSelector提取论文数据
           papers = await this.extractPapersWithPlatformSelector(this.cachedPlatformSelector);
-          
           if (papers.length <= 1) {
             logger.warn(`[GoogleScholarAdapter] 已保存的PlatformSelector未能提取到足够论文，可能页面结构已变化`);
             // 如果选择器失效，创建新任务
@@ -468,7 +465,8 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
             pdfUrl: pdfUrl,
             platform: 'google_scholar',
             sourceUrl: window.location.href,
-            element: element
+            element: element,
+            processing: true//标记当前论文正在处理中,后续还要在后台处理
           });
           
           // 验证创建的Paper对象

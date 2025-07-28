@@ -21,8 +21,6 @@ export class Task {
     this.error = null;
     this.createTime = new Date().getTime();
     this.updateTime = this.createTime;
-    this.retryCount = 0;
-    this.maxRetries = 3;
   }
 
   /**
@@ -61,37 +59,18 @@ export class Task {
     this.updateStatus(TASK_STATUS.FAILED, null, error);
   }
 
-  /**
-   * 增加重试次数
-   * @returns {boolean} 是否还能重试
-   */
-  incrementRetry() {
-    this.retryCount++;
-    return this.canRetry();
-  }
 
-  /**
-   * 检查是否可以重试
-   * @returns {boolean} 是否可以重试
-   */
-  canRetry() {
-    return this.retryCount < this.maxRetries;
-  }
 
-  /**
-   * 重置重试次数
-   */
-  resetRetry() {
-    this.retryCount = 0;
-  }
+
+
 
   /**
    * 检查任务是否过期
    * @param {number} days - 过期天数
    * @returns {boolean} 是否过期
    */
-  isExpired(days) {
-    const expireTime = this.createTime + (days * 24 * 60 * 60 * 1000);
+  isExpired(minutes) {
+    const expireTime = this.createTime + (minutes * 60 * 1000);
     return Date.now() > expireTime;
   }
 
@@ -143,22 +122,6 @@ export class Task {
     return this.status === TASK_STATUS.PENDING;
   }
 
-  /**
-   * 获取任务摘要信息
-   * @returns {Object} 任务摘要
-   */
-  getSummary() {
-    return {
-      key: this.key,
-      type: this.type,
-      status: this.status,
-      createTime: this.createTime,
-      updateTime: this.updateTime,
-      retryCount: this.retryCount,
-      executionTime: this.getExecutionTime(),
-      hasError: !!this.error
-    };
-  }
 
   /**
    * 验证任务参数
@@ -197,9 +160,7 @@ export class Task {
         name: this.error.name
       } : null,
       createTime: this.createTime,
-      updateTime: this.updateTime,
-      retryCount: this.retryCount,
-      maxRetries: this.maxRetries
+      updateTime: this.updateTime
     };
   }
 
@@ -215,8 +176,6 @@ export class Task {
     task.error = data.error ? new Error(data.error.message) : null;
     task.createTime = data.createTime;
     task.updateTime = data.updateTime;
-    task.retryCount = data.retryCount || 0;
-    task.maxRetries = data.maxRetries || 3;
     return task;
   }
 

@@ -6,14 +6,10 @@
 import { BaseHandler } from '../baseHandler.js';
 import { TASK_STATUS, PERSISTENCE_STRATEGY, AI_CRAWLER_SUPPORTED_TASK_TYPES, AI_EXTRACTOR_SUPPORTED_TASK_TYPES, PAGE_TYPE } from '../../../constants.js';
 import { Task } from '../../../model/task.js';
-import { Result } from '../../../model/Result.js';
-import { Paper } from '../../../model/Paper.js';
 import { logger } from '../../../util/logger.js';
 import aiService from '../../../service/aiService.js';
 import { htmlParserService } from '../htmlParserService.js';
-import { CssSelector } from '../../../model/CssSelector.js';
 import { PlatformSelector } from '../../../model/PlatformSelector.js';
-import { RegexSelector } from '../../../model/RegexSelector.js';
 import { runTimeDataService } from '../../../service/runTimeDataService.js';
 import { messageService } from '../messageService.js';
 import { EXTRACTOR_TYPE, SELECTOR_MODE } from '../../../constants.js';

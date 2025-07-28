@@ -52,15 +52,14 @@ class HttpService {
 
   /**
    * 检查是否有访问指定URL的权限
+   * 由于插件已申请所有网站权限，直接返回true
    * @param {string} url - 目标URL
    * @returns {Promise<boolean>} - 是否有权限
    */
   async hasPermission(url) {
     try {
-      const origin = new URL(url).origin + '/*';
-      return new Promise((resolve) => {
-        chrome.permissions.contains({ origins: [origin] }, resolve);
-      });
+      // 插件已拥有所有网站权限，直接返回true
+      return true;
     } catch (error) {
       logger.error(`[HttpService] 权限检查失败: ${url}`, error);
       return false;
@@ -69,6 +68,7 @@ class HttpService {
 
   /**
    * 请求访问指定URL的权限
+   * 由于插件已申请所有网站权限，直接返回true
    * @param {string} url - 目标URL
    * @returns {Promise<boolean>} - 是否成功获得权限
    */
@@ -80,46 +80,13 @@ class HttpService {
         return false;
       }
 
-      // 不使用缓存，总是尝试权限请求以确保用户能看到对话框
-      const origin = new URL(url).origin + '/*';
-      logger.log(`[HttpService] 准备请求权限: ${origin}`);
+      // 插件已拥有所有网站权限，直接返回true
+      logger.log(`[HttpService] 插件已拥有所有网站权限，跳过权限请求: ${url}`);
       
-      // 检查当前是否已有权限
-      const currentPermission = await this.hasPermission(url);
-      logger.log(`[HttpService] 权限请求前状态检查: ${currentPermission} for ${origin}`);
-
-      // 即使已有权限，也尝试请求以触发可能的对话框
-      logger.log(`[HttpService] 正在调用chrome.permissions.request...`);
-      
-      const granted = await new Promise((resolve, reject) => {
-        try {
-          chrome.permissions.request({ origins: [origin] }, (result) => {
-            if (chrome.runtime.lastError) {
-              const error = chrome.runtime.lastError;
-              logger.error(`[HttpService] Chrome权限API错误: ${error.message || JSON.stringify(error)}`);
-              reject(new Error(`Chrome权限API错误: ${error.message || JSON.stringify(error)}`));
-            } else {
-              logger.log(`[HttpService] Chrome权限API返回结果: ${result}`);
-              resolve(result);
-            }
-          });
-        } catch (apiError) {
-          const errorMsg = apiError.message || apiError.toString() || JSON.stringify(apiError);
-          logger.error(`[HttpService] 调用Chrome权限API时发生异常: ${errorMsg}`);
-          reject(new Error(`调用Chrome权限API时发生异常: ${errorMsg}`));
-        }
-      });
-
       // 更新缓存
-      this.permissionCache.set(domain, granted);
+      this.permissionCache.set(domain, true);
       
-      if (granted) {
-        logger.log(`[HttpService] 权限授权成功: ${origin}`);
-      } else {
-        logger.warn(`[HttpService] 权限被用户拒绝: ${origin}`);
-      }
-
-      return granted;
+      return true;
     } catch (error) {
       logger.error(`[HttpService] 权限请求过程中发生错误: ${url}`, error);
       return false;
@@ -204,43 +171,6 @@ class HttpService {
   }
 
   /**
-   * 测试权限请求功能
-   * @param {string} url - 测试URL
-   * @returns {Promise<Object>} - 测试结果
-   */
-  async testPermissionRequest(url) {
-    logger.log(`[HttpService] 开始权限请求测试: ${url}`);
-    
-    try {
-      const hasPermissionBefore = await this.hasPermission(url);
-      logger.log(`[HttpService] 测试前权限状态: ${hasPermissionBefore}`);
-      
-      const granted = await this.requestPermission(url);
-      logger.log(`[HttpService] 权限请求结果: ${granted}`);
-      
-      const hasPermissionAfter = await this.hasPermission(url);
-      logger.log(`[HttpService] 测试后权限状态: ${hasPermissionAfter}`);
-      
-      return {
-        success: true,
-        url: url,
-        hasPermissionBefore,
-        granted,
-        hasPermissionAfter,
-        testTime: new Date().toISOString()
-      };
-    } catch (error) {
-      logger.error(`[HttpService] 权限请求测试失败:`, error);
-      return {
-        success: false,
-        url: url,
-        error: error.message,
-        testTime: new Date().toISOString()
-      };
-    }
-  }
-
-  /**
    * 清除权限缓存
    */
   clearPermissionCache() {
@@ -262,6 +192,7 @@ class HttpService {
 
   /**
    * 权限诊断方法
+   * 由于插件已申请所有网站权限，简化诊断逻辑
    * @returns {Promise<Object>} - 诊断结果
    */
   async diagnosePermissions() {
@@ -281,60 +212,27 @@ class HttpService {
         timestamp: new Date().toISOString(),
         permissions: {},
         cache: this.getPermissionCacheInfo(),
-        manifestPermissions: [],
+        manifestPermissions: ['*://*/*'],
         optionalPermissions: [],
         recommendations: []
       };
 
-      // 检查每个域名的权限状态
+      // 由于插件已拥有所有网站权限，所有域名都标记为已授权
       for (const domain of testDomains) {
-        try {
-          const hasPermission = await chrome.permissions.contains({
-            origins: [domain + '/*']
-          });
-          results.permissions[domain] = {
-            hasPermission,
-            status: hasPermission ? 'granted' : 'not-granted'
-          };
-        } catch (error) {
-          results.permissions[domain] = {
-            hasPermission: false,
-            status: 'error',
-            error: error.message
-          };
-        }
-      }
-
-      // 检查通用权限
-      try {
-        const hasUniversalPermission = await chrome.permissions.contains({
-          origins: ['*://*/*']
-        });
-        results.universalPermission = {
-          hasPermission: hasUniversalPermission,
-          status: hasUniversalPermission ? 'granted' : 'not-granted'
-        };
-
-        if (hasUniversalPermission) {
-          results.recommendations.push('✅ 已获得通用权限，可以访问所有网站');
-        } else {
-          results.recommendations.push('⚠️ 建议在popup中点击"请求所有权限"按钮获得通用访问权限');
-        }
-      } catch (error) {
-        results.universalPermission = {
-          hasPermission: false,
-          status: 'error',
-          error: error.message
+        results.permissions[domain] = {
+          hasPermission: true,
+          status: 'granted'
         };
       }
 
-      // 生成建议
-      const deniedCount = Object.values(results.permissions).filter(p => !p.hasPermission).length;
-      if (deniedCount > 0) {
-        results.recommendations.push(`❌ ${deniedCount} 个域名缺少权限，可能影响论文内容提取`);
-      } else {
-        results.recommendations.push('✅ 所有预定义域名都有访问权限');
-      }
+      // 插件已拥有通用权限
+      results.universalPermission = {
+        hasPermission: true,
+        status: 'granted'
+      };
+      
+      results.recommendations.push('✅ 插件已拥有所有网站访问权限');
+      results.recommendations.push('✅ 所有预定义域名都有访问权限');
 
       logger.log(`[HttpService] 权限诊断完成:`, results);
       return {

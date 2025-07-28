@@ -38,9 +38,6 @@ class Paper {
     this.authors = initialData.authors || [];
     /** @type {string} */
     this.abstract = initialData.abstract || '';
-    /** @type {string[]} */
-    this.urls = Array.isArray(initialData.urls) ? [...initialData.urls] : 
-                (initialData.url ? [initialData.url] : []); // 兼容旧版本的url字段
     /** @type {string} */
     this.pdfUrl = initialData.pdfUrl || '';
     /** @type {string[]} */
@@ -57,6 +54,8 @@ class Paper {
     this.sourceUrl = initialData.sourceUrl || '';
     /** @type {string} */
     this.updateTime = initialData.updateTime || new Date().toISOString();
+    /** @type {boolean} 标记当前论文是否在处理中*/
+    this.processing = initialData.processing || false;
   }
 
   /**

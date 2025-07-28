@@ -7,11 +7,9 @@ import { Paper } from '../../../model/Paper.js';
 import { logger } from '../../../util/logger.js';
 import aiService from '../../../service/aiService.js';
 import { htmlParserService } from '../htmlParserService.js';
-import { messageService } from '../messageService.js';
 import { httpService } from '../httpService.js';
 import { runTimeDataService } from '../../../service/runTimeDataService.js';
 import { paperMetadataService } from '../../feature/paperMetadataService.js';
-import { MessageActions } from '../../../util/message.js';
 
 export class AiExtractorTaskHandler extends BaseHandler {
   /**
@@ -19,7 +17,7 @@ export class AiExtractorTaskHandler extends BaseHandler {
    */
   constructor() {
     const config = {
-      maxConcurrency: 5,
+      maxConcurrency: 1,
       queueConfig: {
         executionQueueSize: 10,
         waitingQueueSize: 20
@@ -94,7 +92,6 @@ export class AiExtractorTaskHandler extends BaseHandler {
    */
   async afterExecute(task, result) {
     await super.afterExecute(task, result);
-    logger.log(`[${this.handlerName}] 任务${task.key}执行完成，结果: ${result.success ? '成功' : '失败'}`);
   }
 
   /**
@@ -158,27 +155,42 @@ export class AiExtractorTaskHandler extends BaseHandler {
         const preprocessedPaper = new Paper(paperData);
         logger.log(`[${this.handlerName}] 预处理论文数据: ${preprocessedPaper}`);
     
-        // 广播论文预处理完成事件
+        // 通过messageService处理论文预处理完成事件
         try {
-          logger.log(`[${this.handlerName}] 广播论文预处理完成事件: ${preprocessedPaper.title}`);
+          logger.log(`[${this.handlerName}] 处理论文预处理完成事件: ${preprocessedPaper.title}`);
+          preprocessedPaper.processing = false;
           
-          // 通过Chrome runtime消息API广播事件
-          chrome.runtime.sendMessage({
-            action: MessageActions.PAPER_PREPROCESSING_COMPLETED,
-            data: {
-              paper: preprocessedPaper,
-              taskKey: task.key,
-              timestamp: new Date().toISOString()
-            }
-          }).catch(error => {
-            // 忽略没有监听器的错误，这是正常的
-            logger.log(`[${this.handlerName}] 消息发送完成 (可能没有监听器): ${error.message}`);
-          });
+          // 使用messageService的内部方法处理论文预处理完成事件
+          const eventData = {
+            paper: preprocessedPaper,
+            taskKey: task.key,
+            timestamp: new Date().toISOString()
+          };
           
-          logger.log(`[${this.handlerName}] 论文预处理完成事件已广播`);
-        } catch (broadcastError) {
-          logger.warn(`[${this.handlerName}] 广播论文预处理完成事件失败:`, broadcastError);
+          // 直接调用paperMetadataService的方法处理预处理完成事件
+          const processingResult = await paperMetadataService.handlePaperPreprocessingCompleted(eventData);
+          
+          if (processingResult) {
+            logger.log(`[${this.handlerName}] 论文预处理完成事件处理成功`);
+          } else {
+            logger.warn(`[${this.handlerName}] 论文预处理完成事件处理失败`);
+          }
+          
+        } catch (eventError) {
+          logger.warn(`[${this.handlerName}] 处理论文预处理完成事件失败:`, eventError);
         }
+        
+        // 返回成功的响应数据
+        return {
+          success: true,
+          paperId: paper.id,
+          paperTitle: paper.title,
+          hasAbstract: !!(abstract && typeof abstract === 'string' && abstract.trim()),
+          abstractLength: abstract ? abstract.length : 0,
+          processedAt: new Date().toISOString(),
+          taskKey: task.key,
+          message: '论文元数据提取任务执行成功'
+        };
         
       } catch (saveError) {
         logger.error(`[${this.handlerName}] 创建和保存预处理论文数据时发生错误:`, saveError);
@@ -186,7 +198,8 @@ export class AiExtractorTaskHandler extends BaseHandler {
           success: false,
           error: saveError.message,
           paperId: paper.id,
-          processedAt: new Date().toISOString()
+          processedAt: new Date().toISOString(),
+          taskKey: task.key
         };
       }
     } catch (error) {
@@ -194,7 +207,8 @@ export class AiExtractorTaskHandler extends BaseHandler {
       return {  
         success: false,
         error: error.message,
-        processedAt: new Date().toISOString()
+        processedAt: new Date().toISOString(),
+        taskKey: task.key
       };
     }
   }
@@ -302,8 +316,7 @@ export class AiExtractorTaskHandler extends BaseHandler {
             (abstract1.length > abstract2.length ? abstract1 : abstract2) :
             abstract1 || abstract2 || null;
           
-          logger.log(`[${this.handlerName}] 论文项并行解析完成，成功: ${parseResult1.success && parseResult2.success}`);
-          
+          return abstract;
         } catch (parseError) {
           logger.warn(`[${this.handlerName}] 论文项并行解析过程出错: ${parseError.message}`);
 
@@ -319,12 +332,12 @@ export class AiExtractorTaskHandler extends BaseHandler {
 
       logger.log(`[${this.handlerName}] 论文HTML解析完成`);
 
-      return abstract;
 
     } catch (error) {
       logger.error(`[${this.handlerName}] 处理论文HTML时发生错误:`, error);
       return null;
     }
+    return null;
   }
 
   /**

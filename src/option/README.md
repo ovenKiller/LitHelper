@@ -68,8 +68,6 @@
 ```javascript
 import { Model, View, Controller } from './option';
 
-// 使用模型获取配置
-const config = Model.getConfig();
 
 // 使用视图创建UI组件
 const modelSelector = View.createModelSelector(models, selectedModel, handleChange);

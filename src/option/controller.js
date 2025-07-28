@@ -5,7 +5,7 @@
  * 负责协调View和ConfigService，处理所有业务逻辑。
  */
 import { View } from './view.js';
-import { configService } from './configService.js';
+import { configService } from '../service/configService.js';
 import aiService from '../service/aiService.js';
 import { logger } from '../util/logger.js';
 

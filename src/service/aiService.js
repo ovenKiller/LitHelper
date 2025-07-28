@@ -6,7 +6,7 @@
  * 然后构造并发送API请求。
  */
 
-import { configService } from '../option/configService.js';
+import { configService } from './configService.js';
 import { logger } from '../util/logger.js';
 
 class AIService {
@@ -46,28 +46,14 @@ class AIService {
    */
   async callLLM(prompt, options = {}) {
     try {
-      // 选择要使用的模型配置
-      let modelName = options.modelName || await this.configService.getSelectedAiModelName();
-      if (!modelName) {
-        // 如果没有设置默认模型，则使用第一个激活的模型
-        const enabledModels = await this.configService.getEnabledModels();
-        if (enabledModels.length === 0) {
-          return { 
-            success: false, 
-            message: "没有可用的AI模型。请在设置中配置API密钥。" 
-          };
-        }
-        modelName = enabledModels[0].name;
-      }
-
-      // 查找模型配置
-      const allModels = await this.configService.getAiModels();
-      const modelConfig = allModels.find(m => m.name === modelName);
-
-      if (!modelConfig || !modelConfig.active || !modelConfig.apiKey) {
+      // 直接使用默认AI模型配置
+      let modelConfig;
+      try {
+        modelConfig = await this.configService.getDefaultAiModel();
+      } catch (error) {
         return { 
           success: false, 
-          message: `模型"${modelName}"不可用或缺少API密钥` 
+          message: error.message || "获取AI模型配置失败"
         };
       }
 
@@ -283,13 +269,8 @@ class AIService {
   async _callWithConfig(prompt, modelConfig, options = {}) {
     // 验证必要的配置字段
     if (!modelConfig || !modelConfig.apiKey || !modelConfig.url || !modelConfig.selectedModel) {
-      return { 
-        success: false, 
-        message: "模型配置不完整，缺少apiKey、url或selectedModel。" 
-      };
+      throw new Error("模型配置不完整，缺少apiKey、url或selectedModel。");
     }
-
-    try {
       // 根据模型提供商构建请求
       const requestDetails = this._constructOpenAICompatibleRequest(
         prompt, 
@@ -310,25 +291,7 @@ class AIService {
         message: "AI调用成功",
         data: parsedResponse
       };
-    } catch (error) {
-      // 构造详细的错误信息
-      let errorMessage = "AI调用失败";
-      
-      if (error.details && error.details.message) {
-        errorMessage += `：${error.details.message}`;
-      } else if (error.message) {
-        errorMessage += `：${error.message}`;
-      }
-      
-      if (error.details && error.details.status) {
-        errorMessage += ` (HTTP ${error.details.status})`;
-      }
-      
-      return {
-        success: false,
-        message: errorMessage
-      };
-    }
+    
   }
 
   /**
