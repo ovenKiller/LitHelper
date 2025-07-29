@@ -293,18 +293,6 @@ export class HtmlParserService {
     }
   }
 
-  /**
-   * 销毁服务，清理资源
-   */
-  async destroy() {
-    try {
-      // 可以在这里添加清理逻辑
-      this.isInitialized = false;
-      logger.log('[HtmlParserService] Service destroyed');
-    } catch (error) {
-      logger.error('[HtmlParserService] Error during destruction:', error);
-    }
-  }
 }
 
 // 创建单例实例

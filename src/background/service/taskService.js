@@ -81,39 +81,6 @@ export class TaskService {
     return handler.addTask(task);
   }
 
-  /**
-   * 获取任务
-   * @param {string} taskKey - 任务键名
-   * @returns {Task|null} 任务对象
-   */
-  getTask(taskKey) {
-    // 遍历所有处理器查找任务
-    for (const handler of this.handlerRegistry.values()) {
-      const task = handler.getTask(taskKey);
-      if (task) {
-        return task;
-      }
-    }
-    return null;
-  }
-
-  /**
-   * 移除任务
-   * @param {string} taskKey - 任务键名
-   * @returns {boolean} 是否成功移除
-   */
-  removeTask(taskKey) {
-    // 遍历所有处理器尝试移除任务
-    for (const handler of this.handlerRegistry.values()) {
-      if (handler.removeTask(taskKey)) {
-        console.log(`[TaskService] 任务已从处理器 "${handler.handlerName}" 中移除: ${taskKey}`);
-        return true;
-      }
-    }
-    
-    console.warn(`[TaskService] 未找到任务: ${taskKey}`);
-    return false;
-  }
 
   /**
    * 启动任务服务
@@ -136,26 +103,6 @@ export class TaskService {
     console.log('[TaskService] 任务调度器已启动，所有处理器已启动');
   }
 
-  /**
-   * 停止任务服务
-   */
-  async stop() {
-    if (!this.isRunning) {
-      console.warn('[TaskService] 任务调度器未在运行');
-      return;
-    }
-
-    this.isRunning = false;
-    
-    // 停止所有处理器
-    const stopPromises = [];
-    for (const handler of this.handlerRegistry.values()) {
-      stopPromises.push(handler.stop());
-    }
-    
-    await Promise.all(stopPromises);
-    console.log('[TaskService] 任务调度器已停止，所有处理器已停止');
-  }
 
   /**
    * 暂停任务服务
@@ -216,20 +163,6 @@ export class TaskService {
     };
   }
 
-  /**
-   * 获取队列信息
-   * @returns {Object} 队列信息
-   */
-  getQueueInfo() {
-    const queueInfo = {};
-    
-    // 聚合所有处理器的队列信息
-    for (const [type, handler] of this.handlerRegistry.entries()) {
-      queueInfo[type] = handler.getQueueInfo();
-    }
-    
-    return queueInfo;
-  }
 
 
   /**

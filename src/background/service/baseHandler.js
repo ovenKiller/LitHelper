@@ -9,47 +9,6 @@ import { runTimeDataService } from '../../service/runTimeDataService.js';
 import { Task } from '../../model/task.js';
 import { logger } from '../../util/logger.js';
 
-// 全局事件总线 - 更精确的消息路由
-class EventBus {
-  constructor() {
-    this.listeners = new Map();
-  }
-
-  on(eventType, handlerName, callback) {
-    const key = `${eventType}:${handlerName}`;
-    if (!this.listeners.has(key)) {
-      this.listeners.set(key, new Set());
-    }
-    this.listeners.get(key).add(callback);
-  }
-
-  off(eventType, handlerName, callback) {
-    const key = `${eventType}:${handlerName}`;
-    if (this.listeners.has(key)) {
-      this.listeners.get(key).delete(callback);
-      if (this.listeners.get(key).size === 0) {
-        this.listeners.delete(key);
-      }
-    }
-  }
-
-  emit(eventType, handlerName, data) {
-    const key = `${eventType}:${handlerName}`;
-    if (this.listeners.has(key)) {
-      this.listeners.get(key).forEach(callback => {
-        try {
-          callback(data);
-        } catch (error) {
-          console.error(`[EventBus] 事件处理失败:`, error);
-        }
-      });
-    }
-  }
-}
-
-// 全局事件总线实例
-const eventBus = new EventBus();
-
 export class BaseHandler {
   /**
    * 构造函数
@@ -69,34 +28,22 @@ export class BaseHandler {
 
     // 持久化配置
     this.persistenceConfig = {
-      strategy: config.persistenceConfig?.strategy || PERSISTENCE_STRATEGY.FIXED_DAYS,
-      fixedMinutes: config.persistenceConfig?.fixedMinutes || 100
+      strategy: config.persistenceConfig?.strategy || PERSISTENCE_STRATEGY.FIXED_DURATION,
+      fixedDuration: config.persistenceConfig?.fixedDuration || 100
     };
 
     // 任务队列
     this.executionQueue = [];
     this.waitingQueue = [];
-    this.completedQueue = [];
-    this.failedQueue = [];
 
     // 任务映射表
     this.taskMap = new Map();
 
-    // 处理器状态
-    this.isRunning = false;
-    this.isPaused = false;
-    this.processingPromise = null;
-    this.processingTimer = null;
-    this.alarmName = `${this.handlerName}_processor`;
-
     // 事件驱动标识
     this.isProcessing = false;
-    this.pendingProcessing = false;
 
     // 事件监听器引用，用于清理
     this.messageListener = null;
-    this.alarmListener = null;
-    this.eventBusCallback = null;
 
     // 延迟初始化
     this.initializePromise = null;
@@ -119,7 +66,7 @@ export class BaseHandler {
    * @private
    */
   async _doInitialize() {
-          logger.log(`[${this.handlerName}] 初始化处理器`);
+    logger.log(`[${this.handlerName}] 初始化处理器`);
     
     try {
       // 恢复队列数据
@@ -142,50 +89,18 @@ export class BaseHandler {
    * 设置事件监听器 - 改进版本
    */
   setupEventListeners() {
-
     // 清理现有监听器
     this.cleanupEventListeners();
-
-    // 设置事件总线监听器，用于处理外部触发的事件
-    this.eventBusCallback = (data) => {
-      // 添加防抖逻辑，避免过于频繁的处理
-      if (this.isRunning && !this.isPaused && !this.isProcessing && !this.pendingProcessing) {
-        this.scheduleProcessing();
-      }
-    };
-    eventBus.on('TASK_ADDED', this.handlerName, this.eventBusCallback);
-
-    // 监听闹钟事件
-    if (chrome.alarms) {
-      this.alarmListener = (alarm) => {
-        if (alarm.name === this.alarmName) {
-          this.processQueue();
-        }
-      };
-      chrome.alarms.onAlarm.addListener(this.alarmListener);
-    }
   }
 
   /**
    * 清理事件监听器
    */
   cleanupEventListeners() {
-    // 清理事件总线监听器
-    if (this.eventBusCallback) {
-      eventBus.off('TASK_ADDED', this.handlerName, this.eventBusCallback);
-      this.eventBusCallback = null;
-    }
-
     // 清理 Chrome 消息监听器
     if (this.messageListener) {
       chrome.runtime.onMessage.removeListener(this.messageListener);
       this.messageListener = null;
-    }
-
-    // 清理闹钟监听器
-    if (this.alarmListener && chrome.alarms) {
-      chrome.alarms.onAlarm.removeListener(this.alarmListener);
-      this.alarmListener = null;
     }
   }
 
@@ -243,210 +158,79 @@ export class BaseHandler {
       throw new Error(`[${this.handlerName}] 任务队列已满`);
     }
 
-    // 触发处理 - 改进版本
-    this.triggerProcessing();
-
     return task;
   }
 
   /**
-   * 触发处理 - 改进版本，直接处理队列而不是触发事件
-   */
-  triggerProcessing() {
-    if (!this.isRunning || this.isPaused || this.isProcessing || this.pendingProcessing) {
-      return;
-    }
-    
-    // 使用 setImmediate 或 setTimeout 确保真正的异步执行
-    this.scheduleProcessing();
-  }
-
-  /**
-   * 调度处理 - 使用真正的异步调用
-   * @private
-   */
-  scheduleProcessing() {
-    if (this.pendingProcessing) {
-      return;
-    }
-    
-    this.pendingProcessing = true;
-    
-    // 使用 setTimeout 确保异步执行，避免递归调用
-    setTimeout(async () => {
-      this.pendingProcessing = false;
-      
-      if (!this.isRunning || this.isPaused || this.isProcessing) {
-        return;
-      }
-
-      try {
-        await this.processQueue();
-      } catch (error) {
-        logger.error(`[${this.handlerName}] 调度队列处理失败:`, error);
-      }
-    }, 0);
-  }
-
-  /**
-   * 启动处理器
+   * 启动处理器 - 启动持续处理循环
    */
   async start() {
-    if (this.isRunning) {
-      logger.warn(`[${this.handlerName}] 处理器已经在运行`);
-      return;
-    }
-
     // 确保处理器已初始化
     await this.initialize();
 
-    this.isRunning = true;
-    this.isPaused = false;
-    // 事件驱动模式：立即处理现有任务
-    this.scheduleProcessing();
-
+    // 启动持续处理循环
+    this.startProcessingLoop();
     
     logger.log(`[${this.handlerName}] 处理器已启动`);
   }
 
   /**
-   * 停止处理器
+   * 启动持续处理循环 - 替代递归式调用
    */
-  async stop() {
-    if (!this.isRunning) {
-      logger.warn(`[${this.handlerName}] 处理器未在运行`);
-      return;
-    }
+  startProcessingLoop() {
+    const processLoop = async () => {
+      while (true) {
+        try {
+          // 如果没有任务，等待一段时间后再检查
+          if (!this.hasQueuedTasks()) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            continue;
+          }
 
-    this.isRunning = false;
-    this.isPaused = false;
-    
-    // 停止定时器
-    this.stopProcessing();
-    
-    // 清理闹钟
-    if (chrome.alarms) {
-      try {
-        await chrome.alarms.clear(this.alarmName);
-      } catch (error) {
-        logger.warn(`[${this.handlerName}] 清理闹钟失败:`, error);
+          // 处理队列
+          await this.processQueue();
+          
+          // 处理完成后短暂休息，避免CPU占用过高
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+        } catch (error) {
+          logger.error(`[${this.handlerName}] 处理循环异常:`, error);
+          // 发生错误时等待更长时间再重试
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
       }
-    }
+    };
 
-    // 清理事件监听器
-    this.cleanupEventListeners();
-    
-    // 等待当前处理完成
-    if (this.processingPromise) {
-      try {
-        await this.processingPromise;
-      } catch (error) {
-        logger.warn(`[${this.handlerName}] 等待处理完成失败:`, error);
-      }
-    }
-    
-    // 保存队列数据
-    await this.saveQueues();
-    
-    logger.log(`[${this.handlerName}] 处理器已停止`);
+    // 启动异步处理循环
+    processLoop().catch(error => {
+      logger.error(`[${this.handlerName}] 处理循环启动失败:`, error);
+    });
   }
 
   /**
-   * 暂停处理器
-   */
-  pause() {
-    if (!this.isRunning) {
-      logger.warn(`[${this.handlerName}] 处理器未在运行`);
-      return;
-    }
-
-    this.isPaused = true;
-    logger.log(`[${this.handlerName}] 处理器已暂停`);
-  }
-
-  /**
-   * 恢复处理器
-   */
-  resume() {
-    if (!this.isRunning) {
-      logger.warn(`[${this.handlerName}] 处理器未在运行`);
-      return;
-    }
-
-    this.isPaused = false;
-    
-    // 恢复时触发处理
-    this.scheduleProcessing();
-    
-    logger.log(`[${this.handlerName}] 处理器已恢复`);
-  }
-
-  /**
-   * 停止处理队列
-   */
-  stopProcessing() {
-    if (this.processingTimer) {
-      clearInterval(this.processingTimer);
-      this.processingTimer = null;
-    }
-  }
-
-  /**
-   * 处理队列
+   * 处理队列 - 纯粹的队列处理逻辑，不包含循环调用
    */
   async processQueue() {
-    if (!this.isRunning || this.isPaused || this.isProcessing) {
+    // 防止并发处理
+    if (this.isProcessing) {
       return;
     }
-
-    this.isProcessing = true;
-    this.processingPromise = this._doProcessQueue(); // 修复：保存处理 Promise
     
-    try {
-      await this.processingPromise;
-    } finally {
-      this.isProcessing = false;
-      this.processingPromise = null;
-    }
-  }
-
-  /**
-   * 实际的队列处理逻辑
-   * @private
-   */
-  async _doProcessQueue() {
+    this.isProcessing = true;
+    
     try {
       // 处理执行队列
       await this.processExecutionQueue();
-
       // 从等待队列移动任务到执行队列
       await this.moveWaitingToExecution();
-
       // 定期保存队列状态
       await this.saveQueues();
-
-      // 如果还有待处理任务，调度下一次处理（避免递归）
-      if (this.hasQueuedTasks()) {
-        // 使用较长的延迟，避免过于频繁的处理和递归调用
-        setTimeout(() => {
-          if (this.isRunning && !this.isPaused && !this.isProcessing && !this.pendingProcessing) {
-            this.scheduleProcessing();
-          }
-        }, 500); // 增加延迟到500ms，减少CPU占用和避免递归
-      }
+      
     } catch (error) {
       logger.error(`[${this.handlerName}] 队列处理失败:`, error);
-      
-      // 在错误情况下，也要确保队列可以继续处理，但要避免递归
-      if (this.hasQueuedTasks() && this.isRunning && !this.isPaused) {
-        setTimeout(() => {
-          if (this.isRunning && !this.isPaused && !this.isProcessing && !this.pendingProcessing) {
-            this.scheduleProcessing();
-          }
-        }, 2000); // 错误后延迟2秒重试
-      }
-      
       throw error;
+    } finally {
+      this.isProcessing = false;
     }
   }
 
@@ -457,7 +241,6 @@ export class BaseHandler {
     return this.executionQueue.some(task => task.isPending()) || 
            this.waitingQueue.length > 0;
   }
-
   /**
    * 处理执行队列
    */
@@ -469,10 +252,6 @@ export class BaseHandler {
     
     // 修复并发控制：只有在当前并发数小于限制时才启动新任务
     for (const task of pendingTasks) {
-      if (!this.isRunning || this.isPaused) {
-        break;
-      }
-
       // 检查并发限制 - 这里需要实时检查，因为可能有任务正在异步执行
       if (this.processingCount >= this.maxConcurrency) {
         logger.log(`[${this.handlerName}] 达到最大并发限制 ${this.maxConcurrency}，当前处理中: ${this.processingCount}`);
@@ -524,9 +303,7 @@ export class BaseHandler {
       
     } catch (error) {
       logger.error(`[${this.handlerName}] 任务执行失败: ${task.key}`, error);
-      
-      // 处理错误
-      await this.handleSpecificError(error, task);
+    
       
       // 标记任务为失败
       task.markAsFailed(error);
@@ -539,22 +316,8 @@ export class BaseHandler {
       this.processingCount--;
       logger.log(`[${this.handlerName}] 任务处理完成，当前并发数: ${this.processingCount}`);
       
-      // 任务完成后，触发下一次队列处理
-      if (this.isRunning && !this.isPaused) {
-        this.scheduleProcessing();
-      }
+      // 任务完成后，不再需要手动触发下一次处理，由主循环负责
     }
-  }
-
-  /**
-   * 特定错误处理 - 默认实现
-   * 子类可以重写此方法
-   * @param {Error} error - 错误对象
-   * @param {Task} task - 任务对象
-   */
-  async handleSpecificError(error, task) {
-    // 默认实现，子类可以重写
-    logger.error(`[${this.handlerName}] 处理器特定错误处理: ${task.key}`, error);
   }
 
   /**
@@ -570,11 +333,6 @@ export class BaseHandler {
       logger.log(`[${this.handlerName}] 任务从等待队列移动到执行队列: ${task.key}`);
     }
   }
-
-
-
-
-
 
   /**
    * 验证任务是否符合处理器要求
@@ -631,8 +389,6 @@ export class BaseHandler {
     // 记录完成执行的日志
     logger.log(`[${this.handlerName}] 完成执行任务: ${task.key}`);
   }
-
-
 
   /**
    * 检查是否可以处理指定类型的任务
@@ -695,27 +451,6 @@ export class BaseHandler {
   }
 
   /**
-   * 移除任务
-   * @param {string} taskKey - 任务键名
-   * @returns {boolean} 是否成功移除
-   */
-  removeTask(taskKey) {
-    const task = this.getTask(taskKey);
-    if (!task) {
-      return false;
-    }
-
-    //    
-    this.taskMap.delete(taskKey);
-
-    // 从所有队列中移除
-    this.removeTaskFromAllQueues(task);
-
-    logger.log(`[${this.handlerName}] 移除任务: ${taskKey}`);
-    return true;
-  }
-
-  /**
    * 保存队列到存储
    */
   async saveQueues() {
@@ -771,7 +506,7 @@ export class BaseHandler {
       [this.executionQueue, this.waitingQueue].forEach(queue => {
         for (let i = queue.length - 1; i >= 0; i--) {
           const task = queue[i];
-          if (task.isExpired(this.persistenceConfig.fixedMinutes)) {
+          if (task.isExpired(this.persistenceConfig.fixedDuration)) {
             expiredTasks.push(task);
             queue.splice(i, 1);
             this.taskMap.delete(task.key);
@@ -786,17 +521,5 @@ export class BaseHandler {
     } catch (error) {
       logger.error(`[${this.handlerName}] 清理过期任务失败:`, error);
     }
-  }
-
-  /**
-   * 获取队列信息
-   * @returns {Object} 队列信息
-   */
-  getQueueInfo() {
-    return {
-      execution: this.executionQueue.map(task => task.getSummary()),
-      waiting: this.waitingQueue.map(task => task.getSummary()),
-        completed: this.completedQueue.slice(-10).map(task => task.getSummary()) // 最近10个
-    };
   }
 }

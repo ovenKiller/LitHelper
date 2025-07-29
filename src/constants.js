@@ -78,7 +78,7 @@ export const QUEUE_CONFIG = {
  */
 export const PERSISTENCE_STRATEGY = {
   NONE: 'none',                          // 不持久化
-  FIXED_DAYS: 'fixed_days',             // 保存固定天数
+  FIXED_DURATION: 'fixed_duration',             // 保存固定时长
   FIXED_COUNT: 'fixed_count'            // 保存固定条数
 };
 

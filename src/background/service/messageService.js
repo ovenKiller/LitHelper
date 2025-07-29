@@ -265,22 +265,6 @@ export class MessageService {
   }
 
 
-
-  /**
-   * 获取任务服务状态
-   */
-  getTaskServiceStatus() {
-    if (!this.taskService) {
-      return { initialized: false };
-    }
-    
-    return {
-      initialized: true,
-      status: this.taskService.getStatus(),
-      queueInfo: this.taskService.getQueueInfo()
-    };
-  }
-
   /**
    * 发送任务完成通知给前台
    * @param {string} taskType - 任务类型
@@ -458,27 +442,6 @@ export class MessageService {
       sendResponse({ success: false, error: error.message || '处理论文预处理完成失败' });
     }
     return true;
-  }
-
-  /**
-   * 销毁消息服务
-   */
-  async destroy() {
-    if (!this.isInitialized) {
-      return;
-    }
-
-    try {
-      // 停止任务服务
-      if (this.taskService) {
-        await this.taskService.stop();
-      }
-      
-      this.isInitialized = false;
-      logger.log('[MessageService] Message service destroyed');
-    } catch (error) {
-      logger.error('[MessageService] Failed to destroy message service:', error);
-    }
   }
 }
 
