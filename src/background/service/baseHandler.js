@@ -38,6 +38,9 @@ export class BaseHandler {
     this.executionQueue = [];
     this.waitingQueue = [];
 
+    // 队列变更跟踪
+    this.queueChanged = false;
+
     // 使用Promise链确保串行执行，避免竞态条件
     this.processingChain = Promise.resolve();
 
@@ -116,9 +119,11 @@ export class BaseHandler {
     // 添加到执行队列或等待队列
     if (this.executionQueue.length < this.queueConfig.executionQueueSize) {
       this.executionQueue.push(task);
+      this.markQueueChanged();
       logger.log(`[${this.handlerName}] 任务添加到执行队列: ${task.key}`);
     } else if (this.waitingQueue.length < this.queueConfig.waitingQueueSize) {
       this.waitingQueue.push(task);
+      this.markQueueChanged();
       logger.log(`[${this.handlerName}] 任务添加到等待队列: ${task.key}`);
     } else {
       throw new Error(`[${this.handlerName}] 任务队列已满`);
@@ -200,8 +205,8 @@ export class BaseHandler {
       await this.processExecutionQueue();
       // 从等待队列移动任务到执行队列
       await this.moveWaitingToExecution();
-      // 定期保存队列状态
-      await this.saveQueues();
+      // 只有在队列发生变更时才保存
+      await this.saveQueuesIfChanged();
 
     } catch (error) {
       logger.error(`[${this.handlerName}] 队列处理失败:`, error);
@@ -213,18 +218,38 @@ export class BaseHandler {
    * 检查是否有待处理任务
    */
   hasQueuedTasks() {
-    return this.executionQueue.some(task => task.isPending()) || 
+    return this.executionQueue.some(task => task.isPending()) ||
            this.waitingQueue.length > 0;
+  }
+
+  /**
+   * 标记队列已变更
+   */
+  markQueueChanged() {
+    this.queueChanged = true;
+  }
+
+  /**
+   * 重置队列变更标记
+   */
+  resetQueueChanged() {
+    this.queueChanged = false;
   }
   /**
    * 处理执行队列
    */
   async processExecutionQueue() {
     // 首先清理已完成或失败的任务
+    const originalLength = this.executionQueue.length;
     this.executionQueue = this.executionQueue.filter(task => task.isPending());
-    
+
+    // 如果清理了任务，标记队列已变更
+    if (this.executionQueue.length !== originalLength) {
+      this.markQueueChanged();
+    }
+
     const pendingTasks = this.executionQueue.filter(task => task.isPending());
-    
+
     // 修复并发控制：只有在当前并发数小于限制时才启动新任务
     for (const task of pendingTasks) {
       // 检查并发限制 - 这里需要实时检查，因为可能有任务正在异步执行
@@ -235,7 +260,7 @@ export class BaseHandler {
 
       // 立即增加处理计数，防止在异步启动过程中被重复启动
       this.processingCount++;
-      
+
       // 异步启动任务，在任务完成时减少计数
       this.executeTaskWithConcurrencyControl(task).catch(error => {
         logger.error(`[${this.handlerName}] 任务执行异常: ${task.key}`, error);
@@ -293,13 +318,21 @@ export class BaseHandler {
    * 从等待队列移动任务到执行队列
    */
   async moveWaitingToExecution() {
-    while (this.waitingQueue.length > 0 && 
+    let moved = false;
+
+    while (this.waitingQueue.length > 0 &&
            this.executionQueue.length < this.queueConfig.executionQueueSize) {
-      
+
       const task = this.waitingQueue.shift();
       this.executionQueue.push(task);
-      
+      moved = true;
+
       logger.log(`[${this.handlerName}] 任务从等待队列移动到执行队列: ${task.key}`);
+    }
+
+    // 如果移动了任务，标记队列已变更
+    if (moved) {
+      this.markQueueChanged();
     }
   }
 
@@ -389,10 +422,27 @@ export class BaseHandler {
         runTimeDataService.saveTaskQueue(`${handlerPrefix}_${QUEUE_TYPE.EXECUTION}`, this.executionQueue),
         runTimeDataService.saveTaskQueue(`${handlerPrefix}_${QUEUE_TYPE.WAITING}`, this.waitingQueue)
       ]);
-      
+
       logger.log(`[${this.handlerName}] 队列数据保存完成`);
     } catch (error) {
       logger.error(`[${this.handlerName}] 保存队列数据失败:`, error);
+    }
+  }
+
+  /**
+   * 只有在队列发生变更时才保存队列到存储
+   */
+  async saveQueuesIfChanged() {
+    if (!this.queueChanged) {
+      return;
+    }
+
+    try {
+      await this.saveQueues();
+      this.resetQueueChanged();
+      logger.log(`[${this.handlerName}] 队列变更已保存`);
+    } catch (error) {
+      logger.error(`[${this.handlerName}] 保存队列变更失败:`, error);
     }
   }
 
@@ -411,6 +461,9 @@ export class BaseHandler {
       this.executionQueue = executionData.map(data => Task.fromJSON(data));
       this.waitingQueue = waitingData.map(data => Task.fromJSON(data));
 
+      // 加载完成后重置变更标记
+      this.resetQueueChanged();
+
       logger.log(`[${this.handlerName}] 队列数据加载完成`);
     } catch (error) {
       logger.error(`[${this.handlerName}] 加载队列数据失败:`, error);
@@ -423,7 +476,7 @@ export class BaseHandler {
   async clearExpiredTasks() {
     try {
       const expiredTasks = [];
-      
+
       // 检查各个队列中的过期任务
       [this.executionQueue, this.waitingQueue].forEach(queue => {
         for (let i = queue.length - 1; i >= 0; i--) {
@@ -436,9 +489,10 @@ export class BaseHandler {
       });
 
       if (expiredTasks.length > 0) {
+        this.markQueueChanged();
         logger.log(`[${this.handlerName}] 清理过期任务: ${expiredTasks.length} 个`);
       }
-      
+
     } catch (error) {
       logger.error(`[${this.handlerName}] 清理过期任务失败:`, error);
     }

@@ -304,6 +304,37 @@ export class MessageService {
   }
 
   /**
+   * 向所有标签页发送通知
+   * @param {string} action - 消息动作
+   * @param {Object} data - 要发送的数据
+   * @param {string} source - 发送源标识（用于日志）
+   */
+  async notifyAllTabs(action, data, source = 'MessageService') {
+    try {
+      logger.log(`[${source}] 准备发送通知给所有标签页: action=${action}`);
+
+      // 获取所有标签页
+      const tabs = await chrome.tabs.query({});
+      logger.log(`[${source}] 找到 ${tabs.length} 个标签页`);
+
+      // 向所有标签页发送通知
+      for (const tab of tabs) {
+        try {
+          await sendMessageToContentScript(tab.id, action, data);
+          logger.debug(`[${source}] 标签页 ${tab.id} 通知发送成功`);
+        } catch (error) {
+          // 忽略无法发送消息的标签页（可能没有content script）
+          logger.debug(`[${source}] 向标签页 ${tab.id} 发送通知失败:`, error.message);
+        }
+      }
+
+      logger.log(`[${source}] 通知发送完成`);
+    } catch (error) {
+      logger.error(`[${source}] 发送通知时发生错误:`, error);
+    }
+  }
+
+  /**
    * 发送任务完成通知给前台
    * @param {string} taskType - 任务类型
    * @param {string} url - 任务相关的URL

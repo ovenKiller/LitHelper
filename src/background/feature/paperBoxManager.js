@@ -1,13 +1,13 @@
 /**
  * 功能定位：
  * 管理论文信息表数据（即本次任务处理列表中的所有论文的详细信息）
- * 底层依赖于数据存取能力storageService
+ * 底层依赖于RunTimeDataService进行数据存取
  * 可能会异步调用
  */
 
 import { logger } from '../../util/logger.js';
-import { Paper } from '../../model/Paper.js';
-import { paperMetadataService } from './paperMetadataService.js';
+import { runTimeDataService } from '../../service/runTimeDataService.js';
+import { messageService } from '../service/messageService.js';
 
 // 内部状态，存储论文盒数据
 let paperBox = {};
@@ -16,8 +16,8 @@ let paperBox = {};
 async function loadInitialPaperBoxData() {
   try {
     logger.log('[PaperBoxManager] Attempting to load PaperBox data...');
-    const savedPapers = await storageService.loadData('savedPapers');
-    logger.debug('[PaperBoxManager] storageService.loadData("savedPapers") RAW RESULT:', savedPapers);
+    const savedPapers = await runTimeDataService.getPaperBoxData();
+    logger.debug('[PaperBoxManager] runTimeDataService.getPaperBoxData() RAW RESULT:', savedPapers);
 
     if (savedPapers && typeof savedPapers === 'object' && savedPapers !== null) {
       paperBox = savedPapers;
@@ -26,7 +26,7 @@ async function loadInitialPaperBoxData() {
       logger.log('[PaperBoxManager] No "savedPapers" found or value is invalid/not an object. Initializing to empty PaperBox.');
       paperBox = {};
       // 如果没有找到数据，立即初始化一个空对象并保存
-      await saveCurrentPaperBox(); 
+      await saveCurrentPaperBox();
     }
   } catch (error) {
     logger.error('[PaperBoxManager] Exception during PaperBox data loading:', error);
@@ -45,27 +45,18 @@ async function loadInitialPaperBoxData() {
 async function saveCurrentPaperBox() {
   try {
     logger.log('[PaperBoxManager] Attempting to save PaperBox data. Content:', paperBox);
-    
+
     if (!paperBox || typeof paperBox !== 'object') {
       logger.warn('[PaperBoxManager] paperBox is invalid, re-initializing to empty object before saving.');
       paperBox = {};
     }
-    
-    const saveSuccess = await storageService.saveData('savedPapers', paperBox);
+
+    const saveSuccess = await runTimeDataService.savePaperBoxData(paperBox);
     if (!saveSuccess) {
       throw new Error('Failed to save PaperBox data to storage');
     }
-    
-    // Verification read
-    const verificationResult = await storageService.loadData('savedPapers');
-    logger.debug('[PaperBoxManager] Data set. Verification read from storage:', verificationResult);
-    
-    if (JSON.stringify(verificationResult) !== JSON.stringify(paperBox)) {
-        logger.warn('[PaperBoxManager] Verification FAILED! Saved data mismatch with in-memory data.');
-        // Potentially re-try or handle error more robustly
-    } else {
-        logger.log('[PaperBoxManager] PaperBox data saved and verified successfully.');
-    }
+
+    logger.log('[PaperBoxManager] PaperBox data saved successfully.');
   } catch (error) {
     logger.error('[PaperBoxManager] Failed to save PaperBox data:', error);
     // Fallback attempt using direct Chrome API (as in original code)
@@ -91,38 +82,29 @@ async function addPaper(paperData) {
       logger.error('[PaperBoxManager] Invalid paper data for addPaper.', paperData);
       return { success: false, error: 'Invalid paper data' };
     }
-    
-    // 正确处理getPaperDetails返回的Promise
-    try {
-      // 异步获取论文详情，但不阻塞论文保存流程
-      paperMetadataService.getPaperDetails(paperData).then(result => {
-        if (result.success) {
-          logger.log('[PaperBoxManager] Successfully fetched paper details for:', paperData.id);
-          // 更新paperBox中的论文数据（如果论文仍在论文盒中）
-          if (paperBox[paperData.id]) {
-            paperBox[paperData.id] = result.paper;
-            saveCurrentPaperBox().catch(err => {
-              logger.error('[PaperBoxManager] Failed to save updated paper details:', err);
-            });
-          }
-        } else {
-          logger.warn('[PaperBoxManager] Failed to fetch paper details:', result.error);
-        }
-      }).catch(error => {
-        logger.error('[PaperBoxManager] Exception when fetching paper details:', error);
-      });
-    } catch (detailsError) {
-      logger.error('[PaperBoxManager] Exception setting up paper details fetch:', detailsError);
-      // 继续执行，不阻止论文保存
-    }
-    
+
     logger.log('[PaperBoxManager] Attempting to add paper:', paperData.id, paperData.title);
-    paperBox[paperData.id] = paperData;
-    await saveCurrentPaperBox();
-    
-    await notificationService.notifyAllTabs('paperBoxUpdated', { papers: { ...paperBox } }, 'PaperBoxManager');
-    logger.log('[PaperBoxManager] Paper added successfully. Current count:', Object.keys(paperBox).length);
-    return { success: true, paperCount: Object.keys(paperBox).length, paper: paperData };
+
+    // 使用 runTimeDataService 添加论文
+    const result = await runTimeDataService.addPaperToBox(paperData);
+
+    if (result.success) {
+      // 更新内存中的 paperBox
+      paperBox[paperData.id] = paperData;
+
+      // 发送通知给所有标签页
+      await messageService.notifyAllTabs('paperBoxUpdated', { papers: { ...paperBox } }, 'PaperBoxManager');
+
+      logger.log('[PaperBoxManager] Paper added successfully. Current count:', result.paperCount);
+
+      // 注意：移除了异步获取论文详情的调用，因为 paperMetadataService.getPaperDetails 方法不存在
+      // 如果需要获取论文详情，应该通过其他方式实现
+
+      return result;
+    } else {
+      logger.error('[PaperBoxManager] Failed to add paper to PaperBox:', result.error);
+      return result;
+    }
   } catch (error) {
     logger.error('[PaperBoxManager] Failed to add paper to PaperBox:', error);
     return { success: false, error: error.message || 'Failed to add paper' };
@@ -135,16 +117,25 @@ async function removePaper(paperId) {
       logger.error('[PaperBoxManager] Invalid paper ID for removePaper.');
       return { success: false, error: 'Invalid paper ID' };
     }
+
     logger.log('[PaperBoxManager] Attempting to remove paper:', paperId);
-    if (!paperBox[paperId]) {
-      logger.warn('[PaperBoxManager] Paper ID not found for removal:', paperId);
-      return { success: false, error: 'Paper not found' }; 
+
+    // 使用 runTimeDataService 移除论文
+    const result = await runTimeDataService.removePaperFromBox(paperId);
+
+    if (result.success) {
+      // 更新内存中的 paperBox
+      delete paperBox[paperId];
+
+      // 发送通知给所有标签页
+      await messageService.notifyAllTabs('paperBoxUpdated', { papers: { ...paperBox } }, 'PaperBoxManager');
+
+      logger.log('[PaperBoxManager] Paper removed successfully. Current count:', result.paperCount);
+      return result;
+    } else {
+      logger.error('[PaperBoxManager] Failed to remove paper from PaperBox:', result.error);
+      return result;
     }
-    delete paperBox[paperId];
-    await saveCurrentPaperBox();
-    await notificationService.notifyAllTabs('paperBoxUpdated', { papers: { ...paperBox } }, 'PaperBoxManager');
-    logger.log('[PaperBoxManager] Paper removed successfully. Current count:', Object.keys(paperBox).length);
-    return { success: true, paperCount: Object.keys(paperBox).length };
   } catch (error) {
     logger.error('[PaperBoxManager] Failed to remove paper from PaperBox:', error);
     return { success: false, error: error.message || 'Failed to remove paper' };
@@ -154,11 +145,23 @@ async function removePaper(paperId) {
 async function clearAllPapers() {
   try {
     logger.log('[PaperBoxManager] Attempting to clear all papers from PaperBox.');
-    paperBox = {};
-    await saveCurrentPaperBox();
-    await notificationService.notifyAllTabs('paperBoxUpdated', { papers: { ...paperBox } }, 'PaperBoxManager');
-    logger.log('[PaperBoxManager] PaperBox cleared successfully.');
-    return { success: true };
+
+    // 使用 runTimeDataService 清空论文盒子
+    const result = await runTimeDataService.clearPaperBox();
+
+    if (result.success) {
+      // 更新内存中的 paperBox
+      paperBox = {};
+
+      // 发送通知给所有标签页
+      await messageService.notifyAllTabs('paperBoxUpdated', { papers: { ...paperBox } }, 'PaperBoxManager');
+
+      logger.log('[PaperBoxManager] PaperBox cleared successfully.');
+      return result;
+    } else {
+      logger.error('[PaperBoxManager] Failed to clear PaperBox:', result.error);
+      return result;
+    }
   } catch (error) {
     logger.error('[PaperBoxManager] Failed to clear PaperBox:', error);
     return { success: false, error: error.message || 'Failed to clear PaperBox' };
