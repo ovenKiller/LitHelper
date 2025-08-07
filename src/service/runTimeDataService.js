@@ -5,6 +5,7 @@
 
 import { logger } from '../util/logger.js';
 import { PlatformSelector } from '../model/PlatformSelector.js';
+import { storage } from '../util/storage.js';
 
 class RunTimeDataService {
   constructor() {
@@ -36,9 +37,9 @@ class RunTimeDataService {
         tasks: tasks.map(task => task.toJSON ? task.toJSON() : task),
         timestamp: Date.now()
       };
-      
-      // 使用Chrome存储API保存数据
-      await chrome.storage.local.set({ [key]: data });
+
+      // 使用StorageService保存数据
+      await storage.saveData(key, data);
       logger.log(`[RunTimeDataService] 保存任务队列 "${queueType}", 任务数量: ${tasks.length}`);
     } catch (error) {
       logger.error(`[RunTimeDataService] 保存任务队列失败 "${queueType}":`, error);
@@ -54,14 +55,14 @@ class RunTimeDataService {
   async loadTaskQueue(queueType) {
     try {
       const key = `task_queue_${queueType}`;
-      const result = await chrome.storage.local.get([key]);
-      
+      const result = await storage.getMultiple([key]);
+
       if (!result[key]) {
         // 首次运行时队列不存在是正常的，使用debug级别日志
         logger.debug(`[RunTimeDataService] 任务队列 "${queueType}" 首次初始化，返回空数组`);
         return [];
       }
-      
+
       const data = result[key];
       logger.log(`[RunTimeDataService] 加载任务队列 "${queueType}", 任务数量: ${data.tasks.length}`);
       return data.tasks;
@@ -81,25 +82,26 @@ class RunTimeDataService {
       logger.log('[RunTimeDataService] 开始删除所有数据');
       
       // 获取所有存储数据
-      const allData = await chrome.storage.local.get(null);
+      const allData = await storage.getAll();
       const keysToRemove = [];
       const statistics = {
         taskQueues: 0,
         totalKeys: 0
       };
-      
+
       // 找到所有任务相关的键
       for (const key in allData) {
-        // 任务队列数据
+        if (key.startsWith('task_queue_')) {
           keysToRemove.push(key);
           statistics.taskQueues++;
+        }
       }
-      
+
       statistics.totalKeys = keysToRemove.length;
-      
+
       if (keysToRemove.length > 0) {
         // 删除所有任务相关数据
-        await chrome.storage.local.remove(keysToRemove);
+        await storage.removeMultiple(keysToRemove);
         logger.log(`[RunTimeDataService] 成功删除所有任务数据，统计:`, {
           删除的键数量: statistics.totalKeys,
           任务队列数量: statistics.taskQueues
@@ -164,12 +166,12 @@ class RunTimeDataService {
         logger.warn(`[RunTimeDataService] ⚠️  没有提取器配置数据`);
       }
       
-      // 保存到Chrome存储
-      logger.log(`[RunTimeDataService] 💾 开始保存到Chrome存储...`);
-      await chrome.storage.local.set({ [storageKey]: saveData });
-      
+      // 保存到存储
+      logger.log(`[RunTimeDataService] 💾 开始保存到存储...`);
+      await storage.saveData(storageKey, saveData);
+
       // 验证保存结果
-      const verifyResult = await chrome.storage.local.get([storageKey]);
+      const verifyResult = await storage.getMultiple([storageKey]);
       if (verifyResult[storageKey]) {
         logger.log(`[RunTimeDataService] ✅ 保存验证成功，数据已确认写入存储`);
         logger.log(`[RunTimeDataService] 📋 验证数据摘要:`, {
@@ -216,25 +218,18 @@ class RunTimeDataService {
       const storageKey = `platformSelectors.${key}`;
       logger.log(`[RunTimeDataService] 从存储查找: ${storageKey}`);
       
-      const result = await chrome.storage.local.get([storageKey]);
-      
+      const result = await storage.getMultiple([storageKey]);
+
       logger.log(`[RunTimeDataService] 存储查询结果:`, {
         storageKey: storageKey,
         exists: !!result[storageKey],
         data: result[storageKey] ? 'found' : 'not found'
       });
-      
+
       if (!result[storageKey]) {
         logger.log(`[RunTimeDataService] PlatformSelector ${key} 不存在`);
-        
-        // 额外调试：列出所有存储的 platformSelectors
-        try {
-          const allStorage = await chrome.storage.local.get(null);
-          const allPlatformSelectorKeys = Object.keys(allStorage).filter(k => k.startsWith('platformSelectors.'));
-          logger.log(`[RunTimeDataService] 所有已存储的PlatformSelector keys:`, allPlatformSelectorKeys);
-        } catch (debugError) {
-          logger.error(`[RunTimeDataService] 调试信息获取失败:`, debugError);
-        }
+
+
         
         return null;
       }
@@ -284,6 +279,99 @@ class RunTimeDataService {
     } catch (error) {
       logger.error('[RunTimeDataService] getPlatformSelectorForPage: 获取PlatformSelector失败:', error);
       return null;
+    }
+  }
+
+  // ===== CSS选择器管理方法 =====
+
+  /**
+   * 获取CSS选择器配置
+   * @param {string} domain 域名
+   * @param {string} pageType 页面类型
+   */
+  async getCssSelector(domain, pageType) {
+    const key = `${domain}_${pageType}`;
+    return await storage.get(`cssSelectors.${key}`);
+  }
+
+  /**
+   * 根据URL和页面类型获取CSS选择器
+   * @param {string} url 目标URL
+   * @param {string} pageType 页面类型
+   */
+  async getCssSelectorForPage(url, pageType) {
+    try {
+      const domain = new URL(url).hostname;
+      return await this.getCssSelector(domain, pageType);
+    } catch (error) {
+      logger.error('[RunTimeDataService] getCssSelectorForPage: URL解析失败:', error);
+      return null;
+    }
+  }
+
+  /**
+   * 保存CSS选择器配置
+   * @param {Object} cssSelector CSS选择器配置对象
+   */
+  async saveCssSelector(cssSelector) {
+    if (!cssSelector || !cssSelector.domain || !cssSelector.pageType) {
+      logger.error('[RunTimeDataService] saveCssSelector: 无效的CSS选择器数据');
+      return false;
+    }
+    const key = `${cssSelector.domain}_${cssSelector.pageType}`;
+    logger.log(`[RunTimeDataService] saveCssSelector: 保存CSS选择器 ${key}`);
+    return await storage.saveData(`cssSelectors.${key}`, cssSelector);
+  }
+
+  /**
+   * 获取所有CSS选择器配置
+   */
+  async getAllCssSelectors() {
+    try {
+      logger.log('[RunTimeDataService] getAllCssSelectors: 开始获取所有CSS选择器');
+      const allData = await storage.getAll();
+      const selectors = [];
+
+      for (const key in allData) {
+        if (key.startsWith('cssSelectors.')) {
+          selectors.push(allData[key]);
+        }
+      }
+
+      logger.log(`[RunTimeDataService] getAllCssSelectors: 找到 ${selectors.length} 个CSS选择器`);
+      return selectors;
+    } catch (error) {
+      logger.error('[RunTimeDataService] getAllCssSelectors: 获取所有CSS选择器失败:', error);
+      return [];
+    }
+  }
+
+  /**
+   * 删除CSS选择器配置
+   * @param {string} domain 域名
+   * @param {string} pageType 页面类型
+   */
+  async removeCssSelector(domain, pageType) {
+    const key = `${domain}_${pageType}`;
+    logger.log(`[RunTimeDataService] removeCssSelector: 删除CSS选择器 ${key}`);
+    return await storage.remove(`cssSelectors.${key}`);
+  }
+
+  /**
+   * 清除所有CSS选择器
+   * @returns {Object} 包含成功状态和删除数量的对象
+   */
+  async clearAllCssSelectors() {
+    try {
+      logger.log('[RunTimeDataService] clearAllCssSelectors: 开始清除所有CSS选择器');
+      const result = await storage.clearByPrefix('cssSelectors.');
+      if (result.success) {
+        logger.log(`[RunTimeDataService] clearAllCssSelectors: 成功清除 ${result.deletedCount} 个CSS选择器`);
+      }
+      return result;
+    } catch (error) {
+      logger.error('[RunTimeDataService] clearAllCssSelectors: 清除CSS选择器失败:', error);
+      return { success: false, error: error.message };
     }
   }
 }

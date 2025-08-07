@@ -6,9 +6,7 @@
  */
 
 import { logger } from '../../util/logger.js';
-import { storage } from '../../util/storage.js';
 import { Paper } from '../../model/Paper.js';
-import { messageUtil } from '../../util/message.js';
 import { paperMetadataService } from './paperMetadataService.js';
 
 // 内部状态，存储论文盒数据

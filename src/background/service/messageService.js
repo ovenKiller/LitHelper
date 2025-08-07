@@ -104,6 +104,9 @@ export class MessageService {
     // Task Service Actions
     handlers.set(MessageActions.ADD_TASK_TO_QUEUE, this.handleAddTaskToQueue.bind(this));
     handlers.set(MessageActions.CLEAR_ALL_TASK_DATA, this.handleClearAllTaskData.bind(this));
+
+    // Storage Service Actions
+    handlers.set(MessageActions.CLEAR_ALL_CSS_SELECTORS, this.handleClearAllCssSelectors.bind(this));
     
 
     
@@ -139,7 +142,9 @@ export class MessageService {
    */
   async handleAddPaperToBox(data, sender, sendResponse) {
     try {
-      const result = await paperBoxManager.addPaper(data);
+      // 从消息数据中提取 paper 对象
+      const paper = data.paper || data;
+      const result = await paperBoxManager.addPaper(paper);
       sendResponse(result);
     } catch (error) {
       logger.error('[MessageService] Failed to add paper to box:', error);
@@ -264,6 +269,39 @@ export class MessageService {
     return true;
   }
 
+  /**
+   * 处理清除所有CSS选择器消息
+   */
+  async handleClearAllCssSelectors(data, sender, sendResponse) {
+    try {
+      logger.log('[MessageService] 收到清除所有CSS选择器请求');
+
+      // 调用runTimeDataService的clearAllCssSelectors方法
+      const result = await runTimeDataService.clearAllCssSelectors();
+
+      if (result.success) {
+        logger.log(`[MessageService] 成功清除所有CSS选择器: ${result.deletedCount} 个`);
+        sendResponse({
+          success: true,
+          deletedCount: result.deletedCount,
+          message: `成功清除 ${result.deletedCount} 个CSS选择器`
+        });
+      } else {
+        logger.error('[MessageService] 清除CSS选择器失败:', result.error);
+        sendResponse({
+          success: false,
+          error: result.error
+        });
+      }
+    } catch (error) {
+      logger.error('[MessageService] 处理清除CSS选择器消息时发生错误:', error);
+      sendResponse({
+        success: false,
+        error: error.message || '清除CSS选择器失败'
+      });
+    }
+    return true;
+  }
 
   /**
    * 发送任务完成通知给前台

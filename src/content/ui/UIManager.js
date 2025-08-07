@@ -219,7 +219,7 @@ class UIManager {
     
     // 发送消息给后台脚本，而不是直接操作存储
     try {
-      const response = await sendMessageToBackend(MessageActions.ADD_PAPER_TO_BOX, { paper });
+      const response = await sendMessageToBackend(MessageActions.ADD_PAPER_TO_BOX, paper);
       if (response && response.success) {
         logger.log(`[UI_TRACE] handleAddPaper: 论文已成功添加，当前共有 ${response.paperCount} 篇论文`);
       } else {

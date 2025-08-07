@@ -35,6 +35,9 @@ export const MessageActions = {
   TASK_COMPLETION_NOTIFICATION: 'taskCompletionNotification',
   CLEAR_ALL_TASK_DATA: 'clearAllTaskData',
 
+  // Storage related (存储相关)
+  CLEAR_ALL_CSS_SELECTORS: 'clearAllCssSelectors',
+
   // Paper metadata processing (论文元数据处理相关)
   PROCESS_PAPERS: 'processPapers',
   PAPER_PREPROCESSING_COMPLETED: 'paperPreprocessingCompleted',

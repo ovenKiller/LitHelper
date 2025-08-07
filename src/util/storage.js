@@ -72,88 +72,7 @@ export class StorageService {
 
 
 
-  /**
-   * 获取CSS选择器配置
-   * @param {string} domain 域名
-   * @param {string} pageType 页面类型
-   */
-  async getCssSelector(domain, pageType) {
-    const key = `${domain}_${pageType}`;
-    return await this.get(`cssSelectors.${key}`);
-  }
 
-  /**
-   * 根据URL和页面类型获取CSS选择器
-   * @param {string} url 目标URL
-   * @param {string} pageType 页面类型
-   */
-  async getCssSelectorForPage(url, pageType) {
-    try {
-      const domain = new URL(url).hostname;
-      return await this.getCssSelector(domain, pageType);
-    } catch (error) {
-      logger.error('[STORAGE] getCssSelectorForPage: URL解析失败:', error);
-      return null;
-    }
-  }
-
-  /**
-   * 根据域名获取所有CSS选择器
-   * @param {string} domain 域名
-   */
-  async getCssSelectorsByDomain(domain) {
-    try {
-      logger.log(`[STORAGE] getCssSelectorsByDomain: 查找域名 "${domain}" 的选择器`);
-      const allData = await chrome.storage.local.get(null);
-      const domainSelectors = [];
-      
-      for (const key in allData) {
-        if (key.startsWith('cssSelectors.') && key.includes(`${domain}_`)) {
-          domainSelectors.push(allData[key]);
-        }
-      }
-      
-      logger.log(`[STORAGE] getCssSelectorsByDomain: 找到 ${domainSelectors.length} 个匹配选择器`);
-      return domainSelectors;
-    } catch (error) {
-      logger.error('[STORAGE] getCssSelectorsByDomain: 查找选择器失败:', error);
-      return [];
-    }
-  }
-
-  /**
-   * 获取所有CSS选择器配置
-   */
-  async getAllCssSelectors() {
-    try {
-      logger.log('[STORAGE] getAllCssSelectors: 开始获取所有CSS选择器');
-      const allData = await chrome.storage.local.get(null);
-      const selectors = [];
-      
-      for (const key in allData) {
-        if (key.startsWith('cssSelectors.')) {
-          selectors.push(allData[key]);
-        }
-      }
-      
-      logger.log(`[STORAGE] getAllCssSelectors: 找到 ${selectors.length} 个CSS选择器`);
-      return selectors;
-    } catch (error) {
-      logger.error('[STORAGE] getAllCssSelectors: 获取所有CSS选择器失败:', error);
-      return [];
-    }
-  }
-
-  /**
-   * 删除CSS选择器配置
-   * @param {string} domain 域名
-   * @param {string} pageType 页面类型
-   */
-  async removeCssSelector(domain, pageType) {
-    const key = `${domain}_${pageType}`;
-    logger.log(`[STORAGE] removeCssSelector: 删除CSS选择器 ${key}`);
-    return await this.remove(`cssSelectors.${key}`);
-  }
 
   /**
    * 保存论文数据
@@ -203,15 +122,15 @@ export class StorageService {
   async getAllSummaries() {
     try {
       logger.log('[STORAGE] getAllSummaries: 开始获取所有摘要');
-      const allData = await chrome.storage.local.get(null);
+      const allData = await this.getAll();
       const summaries = [];
-      
+
       for (const key in allData) {
         if (key.startsWith('summaries.')) {
           summaries.push(allData[key]);
         }
       }
-      
+
       logger.log(`[STORAGE] getAllSummaries: 找到 ${summaries.length} 条摘要`);
       return summaries;
     } catch (error) {
@@ -242,23 +161,75 @@ export class StorageService {
       logger.log(`[STORAGE] clearByPrefix: 开始清空前缀为 "${prefix}" 的数据`);
       const allData = await chrome.storage.local.get(null);
       const keysToRemove = [];
-      
+
       for (const key in allData) {
         if (key.startsWith(prefix)) {
           keysToRemove.push(key);
         }
       }
-      
+
       if (keysToRemove.length > 0) {
         await chrome.storage.local.remove(keysToRemove);
         logger.log(`[STORAGE] clearByPrefix: 已删除 ${keysToRemove.length} 条数据`);
       } else {
         logger.log(`[STORAGE] clearByPrefix: 未找到匹配前缀 "${prefix}" 的数据`);
       }
-      
-      return true;
+
+      return { success: true, deletedCount: keysToRemove.length };
     } catch (error) {
       logger.error(`[STORAGE] clearByPrefix: 清空数据失败[${prefix}]:`, error);
+      return { success: false, error: error.message };
+    }
+  }
+
+
+
+  /**
+   * 获取所有存储数据
+   * @returns {Object} 所有存储的数据
+   */
+  async getAll() {
+    try {
+      logger.log('[STORAGE] getAll: 开始获取所有存储数据');
+      const allData = await chrome.storage.local.get(null);
+      logger.log(`[STORAGE] getAll: 获取到 ${Object.keys(allData).length} 个数据项`);
+      return allData;
+    } catch (error) {
+      logger.error('[STORAGE] getAll: 获取所有数据失败:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 获取多个键的数据
+   * @param {Array<string>} keys 要获取的键数组
+   * @returns {Object} 包含请求键的数据对象
+   */
+  async getMultiple(keys) {
+    try {
+      logger.log(`[STORAGE] getMultiple: 开始获取多个键的数据`, keys);
+      const result = await chrome.storage.local.get(keys);
+      logger.log(`[STORAGE] getMultiple: 获取到 ${Object.keys(result).length} 个数据项`);
+      return result;
+    } catch (error) {
+      logger.error('[STORAGE] getMultiple: 获取多个键数据失败:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 删除多个键
+   * @param {Array<string>} keys 要删除的键数组
+   * @returns {Promise<boolean>} 删除是否成功
+   */
+  async removeMultiple(keys) {
+    try {
+      logger.log(`[STORAGE] removeMultiple: 开始删除多个键`, keys);
+      await chrome.storage.local.remove(keys);
+      logger.log(`[STORAGE] removeMultiple: 成功删除 ${keys.length} 个键`);
+      return true;
+    } catch (error) {
+      logger.error('[STORAGE] removeMultiple: 删除多个键失败:', error);
       return false;
     }
   }

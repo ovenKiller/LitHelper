@@ -1,10 +1,12 @@
 /**
  * 基础任务处理器类 - 事件驱动版本
- * 使用事件驱动架构 + Chrome Alarms API 替代定时任务
  * 可以用于快速创建一个任务的处理器，独享队列。
+ * 
+ * 
+ * TODO： 这个版本功能上来说是没问题的，但是等间隔的定时任务无法消除延时问题。日后再修改。
  */
 
-import { TASK_STATUS, QUEUE_CONFIG, QUEUE_TYPE, PERSISTENCE_STRATEGY } from '../../constants.js';
+import { QUEUE_CONFIG, QUEUE_TYPE, PERSISTENCE_STRATEGY } from '../../constants.js';
 import { runTimeDataService } from '../../service/runTimeDataService.js';
 import { Task } from '../../model/task.js';
 import { logger } from '../../util/logger.js';
@@ -19,7 +21,7 @@ export class BaseHandler {
     this.handlerName = handlerName;
     this.processingCount = 0;
     this.maxConcurrency = config.maxConcurrency || 1;
-    
+
     // 队列配置
     this.queueConfig = {
       executionQueueSize: config.queueConfig?.executionQueueSize || QUEUE_CONFIG.DEFAULT_EXECUTION_QUEUE_SIZE,
@@ -36,14 +38,8 @@ export class BaseHandler {
     this.executionQueue = [];
     this.waitingQueue = [];
 
-    // 任务映射表
-    this.taskMap = new Map();
-
-    // 事件驱动标识
-    this.isProcessing = false;
-
-    // 事件监听器引用，用于清理
-    this.messageListener = null;
+    // 使用Promise链确保串行执行，避免竞态条件
+    this.processingChain = Promise.resolve();
 
     // 延迟初始化
     this.initializePromise = null;
@@ -74,10 +70,7 @@ export class BaseHandler {
       
       // 清理过期任务
       await this.clearExpiredTasks();
-      
-      // 设置事件监听器
-      this.setupEventListeners();
-      
+
       logger.log(`[${this.handlerName}] 处理器初始化完成`);
     } catch (error) {
       logger.error(`[${this.handlerName}] 初始化处理器失败:`, error);
@@ -85,24 +78,7 @@ export class BaseHandler {
     }
   }
 
-  /**
-   * 设置事件监听器 - 改进版本
-   */
-  setupEventListeners() {
-    // 清理现有监听器
-    this.cleanupEventListeners();
-  }
 
-  /**
-   * 清理事件监听器
-   */
-  cleanupEventListeners() {
-    // 清理 Chrome 消息监听器
-    if (this.messageListener) {
-      chrome.runtime.onMessage.removeListener(this.messageListener);
-      this.messageListener = null;
-    }
-  }
 
   /**
    * 抽象方法：执行任务
@@ -137,14 +113,6 @@ export class BaseHandler {
       throw new Error(`[${this.handlerName}] 不支持任务类型: ${task.type}`);
     }
 
-    // // 检查任务是否已存在
-    // if (this.taskMap.has(task.key)) {
-    //   throw new Error(`[${this.handlerName}] 任务已存在: ${task.key}`);
-    // }
-
-    // 添加到任务映射表
-    this.taskMap.set(task.key, task);
-
     // 添加到执行队列或等待队列
     if (this.executionQueue.length < this.queueConfig.executionQueueSize) {
       this.executionQueue.push(task);
@@ -153,8 +121,6 @@ export class BaseHandler {
       this.waitingQueue.push(task);
       logger.log(`[${this.handlerName}] 任务添加到等待队列: ${task.key}`);
     } else {
-      // 如果队列已满，需要从映射表中移除
-      this.taskMap.delete(task.key);
       throw new Error(`[${this.handlerName}] 任务队列已满`);
     }
 
@@ -209,15 +175,26 @@ export class BaseHandler {
 
   /**
    * 处理队列 - 纯粹的队列处理逻辑，不包含循环调用
+   * 使用Promise链确保串行执行，避免竞态条件
    */
   async processQueue() {
-    // 防止并发处理
-    if (this.isProcessing) {
-      return;
-    }
-    
-    this.isProcessing = true;
-    
+    // 将新的处理任务添加到Promise链的末尾
+    this.processingChain = this.processingChain
+      .then(() => this._doProcessQueue())
+      .catch(error => {
+        logger.error(`[${this.handlerName}] 队列处理失败:`, error);
+        // 即使出错也要继续处理后续任务，不要中断整个链
+      });
+
+    // 返回当前的处理Promise，调用者可以选择等待或不等待
+    return this.processingChain;
+  }
+
+  /**
+   * 实际的队列处理逻辑
+   * @private
+   */
+  async _doProcessQueue() {
     try {
       // 处理执行队列
       await this.processExecutionQueue();
@@ -225,12 +202,10 @@ export class BaseHandler {
       await this.moveWaitingToExecution();
       // 定期保存队列状态
       await this.saveQueues();
-      
+
     } catch (error) {
       logger.error(`[${this.handlerName}] 队列处理失败:`, error);
       throw error;
-    } finally {
-      this.isProcessing = false;
     }
   }
 
@@ -298,18 +273,12 @@ export class BaseHandler {
       
       logger.log(`[${this.handlerName}] 任务执行完成: ${task.key}`);
       
-      // 任务成功完成，移动到完成队列
-      this.moveTaskToQueue(task, task.status);
-      
     } catch (error) {
       logger.error(`[${this.handlerName}] 任务执行失败: ${task.key}`, error);
     
       
       // 标记任务为失败
       task.markAsFailed(error);
-      
-      // 从任务映射表中移除
-      this.taskMap.delete(task.key);
       
     } finally {
       // 减少处理计数
@@ -375,8 +344,7 @@ export class BaseHandler {
    * @param {Task} task - 任务对象
    */
   async beforeExecute(task) {
-    // 记录开始执行的日志
-    logger.log(`[${this.handlerName}] 开始执行任务: ${task.key}`);
+    // 子类可以重写此方法添加特定的准备工作
   }
 
   /**
@@ -386,8 +354,7 @@ export class BaseHandler {
    * @param {*} result - 执行结果
    */
   async afterExecute(task, result) {
-    // 记录完成执行的日志
-    logger.log(`[${this.handlerName}] 完成执行任务: ${task.key}`);
+    // 子类可以重写此方法添加特定的清理工作
   }
 
   /**
@@ -408,47 +375,9 @@ export class BaseHandler {
     throw new Error(`Handler "${this.handlerName}" 必须实现 getSupportedTaskTypes 方法`);
   }
 
-  /**
-   * 获取任务
-   * @param {string} taskKey - 任务键名
-   * @returns {Task|null} 任务对象
-   */
-  getTask(taskKey) {
-    return this.taskMap.get(taskKey) || null;
-  }
 
-  /**
-   * 移动任务到对应队列
-   * @param {Task} task - 任务对象
-   * @param {string} status - 任务状态
-   */
-  moveTaskToQueue(task, status) {
-    // 从所有队列中移除任务
-    this.removeTaskFromAllQueues(task);
 
-    // 添加到对应队列
-    switch (status) {
-      case TASK_STATUS.COMPLETED:
-        this.completedQueue.push(task);
-        break;
-      // PENDING 和 EXECUTING 状态的任务保持在原队列
-    }
-  }
 
-  /**
-   * 从所有队列中移除任务
-   * @param {Task} task - 任务对象
-   */
-  removeTaskFromAllQueues(task) {
-    const queues = [this.executionQueue, this.waitingQueue, this.completedQueue];
-    
-    queues.forEach(queue => {
-      const index = queue.findIndex(t => t.key === task.key);
-      if (index !== -1) {
-        queue.splice(index, 1);
-      }
-    });
-  }
 
   /**
    * 保存队列到存储
@@ -482,13 +411,6 @@ export class BaseHandler {
       this.executionQueue = executionData.map(data => Task.fromJSON(data));
       this.waitingQueue = waitingData.map(data => Task.fromJSON(data));
 
-      // 重建任务映射表
-      this.taskMap.clear();
-      const allTasks = [...this.executionQueue, ...this.waitingQueue];
-      allTasks.forEach(task => {
-        this.taskMap.set(task.key, task);
-      });
-
       logger.log(`[${this.handlerName}] 队列数据加载完成`);
     } catch (error) {
       logger.error(`[${this.handlerName}] 加载队列数据失败:`, error);
@@ -509,7 +431,6 @@ export class BaseHandler {
           if (task.isExpired(this.persistenceConfig.fixedDuration)) {
             expiredTasks.push(task);
             queue.splice(i, 1);
-            this.taskMap.delete(task.key);
           }
         }
       });

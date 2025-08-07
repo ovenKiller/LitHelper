@@ -108,15 +108,18 @@ class Popup {
       this.clearCssSelectorsBtn.disabled = true;
       this.clearCssSelectorsBtn.textContent = '清除中...';
 
-      // 直接使用chrome.storage API清除CSS选择器
-      const success = await this.clearAllCssSelectors();
-      
-      if (success) {
-        this.updateStatus('所有CSS选择器已清除');
-        console.log('[Popup] 成功清除所有CSS选择器');
+      // 通过background script调用StorageService
+      const response = await chrome.runtime.sendMessage({
+        action: 'clearAllCssSelectors'
+      });
+
+      if (response && response.success) {
+        this.updateStatus(`所有CSS选择器已清除！删除了 ${response.deletedCount} 个选择器`);
+        console.log('[Popup] 成功清除所有CSS选择器:', response);
       } else {
-        this.showError('清除CSS选择器失败');
-        console.error('[Popup] 清除CSS选择器失败');
+        const errorMsg = response ? response.error : '未知错误';
+        this.showError(`清除CSS选择器失败: ${errorMsg}`);
+        console.error('[Popup] 清除CSS选择器失败:', response);
       }
 
     } catch (error) {
@@ -185,36 +188,7 @@ class Popup {
 
 
 
-  /**
-   * 清除所有CSS选择器（直接使用chrome.storage API）
-   */
-  async clearAllCssSelectors() {
-    try {
-      // 获取所有存储数据
-      const allData = await chrome.storage.local.get(null);
-      const keysToRemove = [];
-      
-      // 找到所有CSS选择器相关的键
-      for (const key in allData) {
-        if (key.startsWith('cssSelectors.')) {
-          keysToRemove.push(key);
-        }
-      }
-      
-      if (keysToRemove.length > 0) {
-        // 删除所有CSS选择器数据
-        await chrome.storage.local.remove(keysToRemove);
-        console.log(`[Popup] 清除CSS选择器数据，删除了 ${keysToRemove.length} 条记录`);
-        return true;
-      } else {
-        console.log('[Popup] 未找到CSS选择器数据');
-        return true;
-      }
-    } catch (error) {
-      console.error('[Popup] 清除CSS选择器数据失败:', error);
-      return false;
-    }
-  }
+
 
 
 }
