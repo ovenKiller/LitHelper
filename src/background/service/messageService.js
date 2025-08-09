@@ -44,7 +44,10 @@ export class MessageService {
       
       // 初始化任务服务
       await this.initializeTaskService();
-      
+
+      // 初始化论文盒数据
+      await paperBoxManager.loadInitialPaperBoxData();
+
       // 设置消息监听器
       this.setupMessageListeners();
       
@@ -126,14 +129,13 @@ export class MessageService {
    * 处理获取论文盒数据消息
    */
   async handleGetPaperBoxData(data, sender, sendResponse) {
-    // try {
-    //   const papers = await paperBoxManager.getAllPapers();
-    //   sendResponse({ success: true, papers });
-    // } catch (error) {
-    //   logger.error('[MessageService] Failed to get paper box data:', error);
-    //   sendResponse({ success: false, error: error.message });
-    // }
-    // return true;
+    try {
+      const papers = paperBoxManager.getPaperBox();
+      sendResponse({ success: true, papers });
+    } catch (error) {
+      logger.error('[MessageService] Failed to get paper box data:', error);
+      sendResponse({ success: false, error: error.message });
+    }
     return true;
   }
 

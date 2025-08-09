@@ -37,8 +37,8 @@ class UIManager {
       
       const [papersData] = await Promise.all([
         // 网络请求：从后台加载论文数据（异步，可能耗时）
-        // this.loadPapersFromBackground(),
-        
+        this.loadPapersFromBackground(),
+
         // DOM操作：初始化弹出窗口（同步，较快）
         this.initializePopupWindow(),
         

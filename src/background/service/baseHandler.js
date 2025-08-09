@@ -1,8 +1,11 @@
 /**
  * 基础任务处理器类 - 事件驱动版本
  * 可以用于快速创建一个任务的处理器，独享队列。
- * 
- * 
+ *
+ * 支持配置持久化策略：
+ * - PERSISTENCE_STRATEGY.NONE: 不持久化，适用于临时任务，避免内存超出限额
+ * - PERSISTENCE_STRATEGY.FIXED_DURATION: 持久化固定时长，适用于重要任务
+ *
  * TODO： 这个版本功能上来说是没问题的，但是等间隔的定时任务无法消除延时问题。日后再修改。
  */
 
@@ -16,6 +19,13 @@ export class BaseHandler {
    * 构造函数
    * @param {string} handlerName - 处理器名称
    * @param {Object} config - 处理器配置
+   * @param {Object} config.queueConfig - 队列配置
+   * @param {number} config.queueConfig.executionQueueSize - 执行队列大小
+   * @param {number} config.queueConfig.waitingQueueSize - 等待队列大小
+   * @param {Object} config.persistenceConfig - 持久化配置
+   * @param {string} config.persistenceConfig.strategy - 持久化策略 (NONE|FIXED_DURATION)
+   * @param {number} config.persistenceConfig.fixedDuration - 固定持久化时长(分钟)
+   * @param {number} config.maxConcurrency - 最大并发数
    */
   constructor(handlerName, config = {}) {
     this.handlerName = handlerName;
@@ -416,6 +426,12 @@ export class BaseHandler {
    * 保存队列到存储
    */
   async saveQueues() {
+    // 检查持久化策略，如果为 NONE 则跳过保存
+    if (this.persistenceConfig.strategy === PERSISTENCE_STRATEGY.NONE) {
+      logger.debug(`[${this.handlerName}] 持久化策略为 NONE，跳过队列保存`);
+      return;
+    }
+
     try {
       const handlerPrefix = this.handlerName;
       await Promise.all([
@@ -431,6 +447,7 @@ export class BaseHandler {
 
   /**
    * 只有在队列发生变更时才保存队列到存储
+   * 会根据持久化策略决定是否实际保存
    */
   async saveQueuesIfChanged() {
     if (!this.queueChanged) {
@@ -440,7 +457,10 @@ export class BaseHandler {
     try {
       await this.saveQueues();
       this.resetQueueChanged();
-      logger.log(`[${this.handlerName}] 队列变更已保存`);
+      // 只有在实际保存时才记录日志
+      if (this.persistenceConfig.strategy !== PERSISTENCE_STRATEGY.NONE) {
+        logger.log(`[${this.handlerName}] 队列变更已保存`);
+      }
     } catch (error) {
       logger.error(`[${this.handlerName}] 保存队列变更失败:`, error);
     }
@@ -450,6 +470,15 @@ export class BaseHandler {
    * 从存储加载队列
    */
   async loadQueues() {
+    // 检查持久化策略，如果为 NONE 则跳过加载
+    if (this.persistenceConfig.strategy === PERSISTENCE_STRATEGY.NONE) {
+      logger.debug(`[${this.handlerName}] 持久化策略为 NONE，跳过队列加载，使用空队列`);
+      this.executionQueue = [];
+      this.waitingQueue = [];
+      this.resetQueueChanged();
+      return;
+    }
+
     try {
       const handlerPrefix = this.handlerName;
       const [executionData, waitingData] = await Promise.all([
