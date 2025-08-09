@@ -5,8 +5,7 @@
  */
 
 import { logger } from '../../util/logger.js';
-import { addRuntimeMessageListener, MessageActions, sendMessageToContentScript } from '../../util/message.js';
-import { configService } from '../../service/configService.js';
+import { addRuntimeMessageListener, MessageActions, broadcastToAllTabs, sendToMatchingTabs } from '../../util/message.js';
 import { paperBoxManager } from '../feature/paperBoxManager.js';
 import { summarizationHandler } from '../feature/summarizationHandler.js';
 import { TaskService } from './taskService.js';
@@ -16,7 +15,6 @@ import { Task } from '../../model/task.js';
 import { paperMetadataService } from '../feature/paperMetadataService.js';
 import { AI_CRAWLER_SUPPORTED_TASK_TYPES, AI_EXTRACTOR_SUPPORTED_TASK_TYPES } from '../../constants.js';
 import { runTimeDataService } from '../../service/runTimeDataService.js';
-import { httpService } from './httpService.js';
 
 /**
  * 消息服务类
@@ -41,16 +39,13 @@ export class MessageService {
 
     try {
       logger.log('[MessageService] Initializing message service...');
-      
+
       // 初始化任务服务
       await this.initializeTaskService();
 
-      // 初始化论文盒数据
-      await paperBoxManager.loadInitialPaperBoxData();
-
       // 设置消息监听器
       this.setupMessageListeners();
-      
+
       this.isInitialized = true;
       logger.log('[MessageService] Message service initialized successfully');
     } catch (error) {
@@ -312,28 +307,16 @@ export class MessageService {
    * @param {string} source - 发送源标识（用于日志）
    */
   async notifyAllTabs(action, data, source = 'MessageService') {
-    try {
-      logger.log(`[${source}] 准备发送通知给所有标签页: action=${action}`);
+    // 使用 message.js 中的抽象方法
+    const result = await broadcastToAllTabs(action, data, source);
 
-      // 获取所有标签页
-      const tabs = await chrome.tabs.query({});
-      logger.log(`[${source}] 找到 ${tabs.length} 个标签页`);
-
-      // 向所有标签页发送通知
-      for (const tab of tabs) {
-        try {
-          await sendMessageToContentScript(tab.id, action, data);
-          logger.debug(`[${source}] 标签页 ${tab.id} 通知发送成功`);
-        } catch (error) {
-          // 忽略无法发送消息的标签页（可能没有content script）
-          logger.debug(`[${source}] 向标签页 ${tab.id} 发送通知失败:`, error.message);
-        }
-      }
-
-      logger.log(`[${source}] 通知发送完成`);
-    } catch (error) {
-      logger.error(`[${source}] 发送通知时发生错误:`, error);
+    if (result.success) {
+      logger.log(`[${source}] 通知发送完成: ${result.successCount}/${result.totalTabs} 成功`);
+    } else {
+      logger.error(`[${source}] 发送通知失败:`, result.error);
     }
+
+    return result;
   }
 
   /**
@@ -345,76 +328,32 @@ export class MessageService {
    * @param {Object} additionalData - 附加数据
    */
   async sendTaskCompletionNotification(taskType, url, platform, success, additionalData = {}) {
-    try {
-      logger.log(`[MessageService] 准备发送任务完成通知: taskType=${taskType}, url=${url}, platform=${platform}, success=${success}`);
-      
-      // 获取所有标签页
-      const tabs = await chrome.tabs.query({});
-      logger.log(`[MessageService] 找到 ${tabs.length} 个标签页`);
-      
-      // 查找匹配URL的标签页
-      const matchingTabs = tabs.filter(tab => {
-        if (!tab.url) {
-          logger.log(`[MessageService] 标签页 ${tab.id} 没有URL，跳过`);
-          return false;
-        }
-        
-        try {
-          const tabUrl = new URL(tab.url);
-          const targetUrl = new URL(url);
-          
-          logger.log(`[MessageService] 标签页 ${tab.id}: ${tabUrl.hostname}${tabUrl.pathname} vs 目标: ${targetUrl.hostname}${targetUrl.pathname}`);
-          
-          // 比较域名和路径（忽略查询参数和锚点）
-          const matches = tabUrl.hostname === targetUrl.hostname && 
-                         tabUrl.pathname === targetUrl.pathname;
-          
-          if (matches) {
-            logger.log(`[MessageService] 标签页 ${tab.id} URL匹配成功`);
-          }
-          
-          return matches;
-        } catch (error) {
-          logger.error(`[MessageService] 标签页 ${tab.id} URL解析错误:`, error);
-          return false;
-        }
-      });
+    logger.log(`[MessageService] 准备发送任务完成通知: taskType=${taskType}, url=${url}, platform=${platform}, success=${success}`);
 
-      logger.log(`[MessageService] 找到 ${matchingTabs.length} 个匹配的标签页`);
+    // 构建通知数据
+    const notificationData = {
+      taskType,
+      url,
+      platform,
+      success,
+      timestamp: Date.now(),
+      ...additionalData
+    };
 
-      const notificationData = {
-        taskType,
-        url,
-        platform,
-        success,
-        timestamp: Date.now(),
-        ...additionalData
-      };
+    // 使用 message.js 中的抽象方法发送到匹配的标签页
+    const result = await sendToMatchingTabs(url, MessageActions.TASK_COMPLETION_NOTIFICATION, notificationData, 'MessageService');
 
-      // 向匹配的标签页发送通知
-      for (const tab of matchingTabs) {
-        try {
-          logger.log(`[MessageService] 正在向标签页 ${tab.id} 发送通知...`);
-          await sendMessageToContentScript(tab.id, MessageActions.TASK_COMPLETION_NOTIFICATION, notificationData);
-          logger.log(`[MessageService] 标签页 ${tab.id} 通知发送成功`);
-        } catch (error) {
-          logger.error(`[MessageService] 向标签页 ${tab.id} 发送通知失败:`, error);
-        }
-      }
-
-      if (matchingTabs.length === 0) {
+    if (result.success) {
+      if (result.matchingTabs.length > 0) {
+        logger.log(`[MessageService] 任务完成通知发送完成: ${result.successCount}/${result.totalMatching} 成功`);
+      } else {
         logger.warn(`[MessageService] 没有找到匹配URL的标签页: ${url}`);
-        logger.log(`[MessageService] 所有标签页URL列表:`);
-        tabs.forEach(tab => {
-          if (tab.url) {
-            logger.log(`  - 标签页 ${tab.id}: ${tab.url}`);
-          }
-        });
       }
-
-    } catch (error) {
-      logger.error('[MessageService] 发送任务完成通知失败:', error);
+    } else {
+      logger.error('[MessageService] 发送任务完成通知失败:', result.error);
     }
+
+    return result;
   }
 
   /**

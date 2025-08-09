@@ -136,3 +136,122 @@ export function addContentScriptMessageListener(handlers) {
     contentScriptListenerSetup = true;
   }
 }
+
+/**
+ * 向所有标签页发送消息
+ * @param {MessageActions} action - 消息动作
+ * @param {any} data - 要发送的数据
+ * @param {string} source - 发送源标识（用于日志，可选）
+ * @returns {Promise<{success: boolean, results: Array}>}
+ */
+export async function broadcastToAllTabs(action, data, source = 'Unknown') {
+  try {
+    console.log(`[${source}] 准备广播消息给所有标签页: action=${action}`);
+
+    // 获取所有标签页
+    const tabs = await chrome.tabs.query({});
+    console.log(`[${source}] 找到 ${tabs.length} 个标签页`);
+
+    const results = [];
+
+    // 向所有标签页发送消息
+    for (const tab of tabs) {
+      try {
+        await sendMessageToContentScript(tab.id, action, data);
+        results.push({ tabId: tab.id, success: true });
+        console.debug(`[${source}] 标签页 ${tab.id} 消息发送成功`);
+      } catch (error) {
+        results.push({ tabId: tab.id, success: false, error: error.message });
+        console.debug(`[${source}] 向标签页 ${tab.id} 发送消息失败:`, error.message);
+      }
+    }
+
+    console.log(`[${source}] 广播完成，成功: ${results.filter(r => r.success).length}/${results.length}`);
+
+    return {
+      success: true,
+      results,
+      totalTabs: tabs.length,
+      successCount: results.filter(r => r.success).length
+    };
+  } catch (error) {
+    console.error(`[${source}] 广播消息时发生错误:`, error);
+    return {
+      success: false,
+      error: error.message,
+      results: []
+    };
+  }
+}
+
+/**
+ * 向匹配指定URL的标签页发送消息
+ * @param {string} targetUrl - 目标URL
+ * @param {MessageActions} action - 消息动作
+ * @param {any} data - 要发送的数据
+ * @param {string} source - 发送源标识（用于日志，可选）
+ * @returns {Promise<{success: boolean, results: Array, matchingTabs: Array}>}
+ */
+export async function sendToMatchingTabs(targetUrl, action, data, source = 'Unknown') {
+  try {
+    console.log(`[${source}] 准备发送消息给匹配URL的标签页: ${targetUrl}`);
+
+    // 获取所有标签页
+    const tabs = await chrome.tabs.query({});
+    console.log(`[${source}] 找到 ${tabs.length} 个标签页`);
+
+    // 查找匹配URL的标签页
+    const matchingTabs = tabs.filter(tab => {
+      if (!tab.url) {
+        return false;
+      }
+
+      try {
+        const tabUrl = new URL(tab.url);
+        const target = new URL(targetUrl);
+
+        // 比较域名和路径（忽略查询参数和锚点）
+        return tabUrl.hostname === target.hostname && tabUrl.pathname === target.pathname;
+      } catch (error) {
+        console.error(`[${source}] URL解析错误:`, error);
+        return false;
+      }
+    });
+
+    console.log(`[${source}] 找到 ${matchingTabs.length} 个匹配的标签页`);
+
+    const results = [];
+
+    // 向匹配的标签页发送消息
+    for (const tab of matchingTabs) {
+      try {
+        await sendMessageToContentScript(tab.id, action, data);
+        results.push({ tabId: tab.id, success: true });
+        console.log(`[${source}] 标签页 ${tab.id} 消息发送成功`);
+      } catch (error) {
+        results.push({ tabId: tab.id, success: false, error: error.message });
+        console.error(`[${source}] 向标签页 ${tab.id} 发送消息失败:`, error);
+      }
+    }
+
+    if (matchingTabs.length === 0) {
+      console.warn(`[${source}] 没有找到匹配URL的标签页: ${targetUrl}`);
+    }
+
+    return {
+      success: true,
+      results,
+      matchingTabs: matchingTabs.map(tab => ({ id: tab.id, url: tab.url })),
+      totalMatching: matchingTabs.length,
+      successCount: results.filter(r => r.success).length
+    };
+  } catch (error) {
+    console.error(`[${source}] 发送消息到匹配标签页时发生错误:`, error);
+    return {
+      success: false,
+      error: error.message,
+      results: [],
+      matchingTabs: []
+    };
+  }
+}

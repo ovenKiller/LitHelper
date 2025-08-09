@@ -7,19 +7,20 @@
 import { logger } from '../util/logger.js';
 import { messageService } from './service/messageService.js';
 import { contextMenuService } from './view/contextMenuService.js';
+import { paperBoxManager } from './feature/paperBoxManager.js';
 
 // --- Initialization ---
 
 async function initialize() {
   logger.log('Background service initializing...');
-  
+
   try {
-    // Initialize message service (handles all message processing)
+    await paperBoxManager.loadInitialPaperBoxData();
+
     await messageService.initialize();
-    
-    // Initialize services that have a startup routine
+
     contextMenuService.initializeContextMenus();
-    
+
     logger.log('Background service initialized successfully.');
   } catch (error) {
     logger.error('Failed to initialize background service:', error);
