@@ -45,7 +45,6 @@ export const TASK_STATUS = {
  * 任务类型常量
  */
 export const TASK_TYPE = {
-  SUMMARIZATION: 'summarization',        // 总结任务
   DOWNLOAD: 'download',                  // 下载任务
   METADATA_EXTRACTION: 'metadata_extraction',  // 元数据提取任务
   PAPER_ANALYSIS: 'paper_analysis',      // 论文分析任务
@@ -61,6 +60,14 @@ export const AI_CRAWLER_SUPPORTED_TASK_TYPES = {
 
 export const AI_EXTRACTOR_SUPPORTED_TASK_TYPES = {
   PAPER_METADATA_EXTRACTION: 'paper_metadata_extraction'
+};
+
+/**
+ * 整理任务类型常量
+ */
+export const ORGANIZE_SUPPORTED_TASK_TYPES = {
+  // 统一采用复数形式，表示“整理论文（单/多均可）”
+  ORGANIZE_PAPER: 'organize_paper'
 };
 
 /**
@@ -137,7 +144,6 @@ export function getTaskStatusDisplayName(status) {
  */
 export function getTaskTypeDisplayName(type) {
   const typeNames = {
-    [TASK_TYPE.SUMMARIZATION]: '论文总结',
     [TASK_TYPE.DOWNLOAD]: '文件下载',
     [TASK_TYPE.METADATA_EXTRACTION]: '元数据提取',
     [TASK_TYPE.PAPER_ANALYSIS]: '论文分析',

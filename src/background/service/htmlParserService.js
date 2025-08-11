@@ -5,6 +5,7 @@
  */
 
 import { logger } from '../../util/logger.js';
+import { MessageActions } from '../../util/message.js';
 
 /**
  * HTML解析服务类
@@ -89,7 +90,7 @@ export class HtmlParserService {
       // 发送消息到 Offscreen 文档进行解析
       const response = await chrome.runtime.sendMessage({
         target: 'offscreen',
-        action: 'extractElements',
+        action: MessageActions.EXTRACT_ELEMENTS,
         data: {
           html,
           selector
@@ -206,7 +207,7 @@ export class HtmlParserService {
       // 发送消息到 Offscreen 文档进行HTML压缩
       const response = await chrome.runtime.sendMessage({
         target: 'offscreen',
-        action: 'compressHtml',
+        action: MessageActions.COMPRESS_HTML,
         data: {
           html,
           minLength
@@ -245,7 +246,7 @@ export class HtmlParserService {
       
       const response = await chrome.runtime.sendMessage({
         target: 'offscreen',
-        action: 'extractLargeTextBlocks',
+        action: MessageActions.EXTRACT_LARGE_TEXT_BLOCKS,
         data: {
           html,
           minLength

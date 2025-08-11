@@ -2,13 +2,14 @@ import {
   extractTextStructure,
   extractLargeTextBlocks
 } from '../util/htmlParser.js';
+import { MessageActions } from '../util/message.js';
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.target !== 'offscreen') {
     return;
   }
 
-  if (request.action === 'parseHTML') {
+  if (request.action === MessageActions.PARSE_HTML) {
     const { html, platform } = request.data;
     const doc = new DOMParser().parseFromString(html, 'text/html');
 
@@ -22,7 +23,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         validation,
       },
     });
-  } else if (request.action === 'extractElements') {
+  } else if (request.action === MessageActions.EXTRACT_ELEMENTS) {
     const { html, selector } = request.data;
     
     try {
@@ -55,7 +56,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         error: `Invalid selector or parsing error: ${error.message}`
       });
     }
-  } else if (request.action === 'compressHtml') {
+  } else if (request.action === MessageActions.COMPRESS_HTML) {
     const { html, minLength = 20 } = request.data;
     
     try {
@@ -74,7 +75,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         error: `HTML compression error: ${error.message}`
       });
     }
-  } else if (request.action === 'extractLargeTextBlocks') {
+  } else if (request.action === MessageActions.EXTRACT_LARGE_TEXT_BLOCKS) {
     const { html, minLength = 100 } = request.data;
     
     try {

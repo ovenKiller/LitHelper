@@ -379,6 +379,7 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
       for (let i = 0; i < paperItemElements.length; i++) {
         const element = paperItemElements[i];
         let title = `论文 ${i + 1}`; // 默认标题，放在外层作用域
+        let authors = ''; // 作者（整段字符串）
         
         logger.log(`[GoogleScholarAdapter] 开始提取论文项 ${i + 1}/${paperItemElements.length}`);
         
@@ -403,7 +404,15 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
           // 提取摘要
           const abstractElement = element.querySelector('.gs_rs');
           const abstract = abstractElement ? abstractElement.textContent.trim() : '';
-          
+
+          // 提取作者信息（来自 .gs_a 元信息行）
+          const metaLineElement = element.querySelector('.gs_a');
+          if (metaLineElement && metaLineElement.textContent) {
+            const metaText = metaLineElement.textContent.trim();
+            let authorsText = (metaText.split(/\s*-\s*/)[0] || metaText);
+            authors = authorsText || '';
+          }
+
           // 提取All Versions链接
           const allVersionsLinkElement = Array.from(element.querySelectorAll('a'))
             .find(a => {
@@ -432,7 +441,15 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
           const pdfLinkElement = Array.from(element.querySelectorAll('a')).find(
             a => {
               const href = a.getAttribute('href');
-              return href && href.toLowerCase().endsWith('.pdf');
+              if (!href) return false;
+
+              const lowerHref = href.toLowerCase();
+
+              // 检查是否为PDF链接：
+              // 1. 以.pdf结尾（传统情况）
+              // 2. 包含.pdf但后面跟着锚点（如 #page=252）
+              // 3. 包含.pdf但后面跟着查询参数（如 ?download=true）
+              return /\.pdf(\?|#|$)/.test(lowerHref);
             }
           );
           
@@ -458,12 +475,13 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
           
           // 创建论文对象
           const paper = new Paper({
-            id: title,
+            id: title +"#" + authors,
             title: title,
+            authors: authors,
             abstract: abstract,
             allVersionsUrl: allVersionsUrl,
             pdfUrl: pdfUrl,
-            platform: 'google_scholar',
+            platform: this.getPlatformKey(), // 统一使用platform字段
             sourceUrl: window.location.href,
             element: element,
             processing: true//标记当前论文正在处理中,后续还要在后台处理
@@ -496,7 +514,7 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
           const fallbackPaper = new Paper({
             id: fallbackId,
             title: fallbackId,
-            platform: 'google_scholar',
+            platform: this.getPlatformKey(), // 统一使用platform字段
             sourceUrl: window.location.href,
             element: element // 确保element始终有值
           });

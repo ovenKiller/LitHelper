@@ -8,6 +8,7 @@
 import { logger } from '../../util/logger.js';
 import { runTimeDataService } from '../../service/runTimeDataService.js';
 import { messageService } from '../service/messageService.js';
+import { MessageActions } from '../../util/message.js';
 
 // 内部状态，存储论文盒数据
 let paperBox = {};
@@ -93,7 +94,7 @@ async function addPaper(paperData) {
       paperBox[paperData.id] = paperData;
 
       // 发送通知给所有标签页
-      await messageService.notifyAllTabs('paperBoxUpdated', { papers: { ...paperBox } }, 'PaperBoxManager');
+      await messageService.notifyAllTabs(MessageActions.PAPER_BOX_UPDATED, { papers: { ...paperBox } }, 'PaperBoxManager');
 
       logger.log('[PaperBoxManager] Paper added successfully. Current count:', result.paperCount);
 
@@ -128,7 +129,7 @@ async function removePaper(paperId) {
       delete paperBox[paperId];
 
       // 发送通知给所有标签页
-      await messageService.notifyAllTabs('paperBoxUpdated', { papers: { ...paperBox } }, 'PaperBoxManager');
+      await messageService.notifyAllTabs(MessageActions.PAPER_BOX_UPDATED, { papers: { ...paperBox } }, 'PaperBoxManager');
 
       logger.log('[PaperBoxManager] Paper removed successfully. Current count:', result.paperCount);
       return result;
@@ -154,7 +155,7 @@ async function clearAllPapers() {
       paperBox = {};
 
       // 发送通知给所有标签页
-      await messageService.notifyAllTabs('paperBoxUpdated', { papers: { ...paperBox } }, 'PaperBoxManager');
+      await messageService.notifyAllTabs(MessageActions.PAPER_BOX_UPDATED, { papers: { ...paperBox } }, 'PaperBoxManager');
 
       logger.log('[PaperBoxManager] PaperBox cleared successfully.');
       return result;

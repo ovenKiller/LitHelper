@@ -110,7 +110,7 @@ class Popup {
 
       // 通过background script调用StorageService
       const response = await chrome.runtime.sendMessage({
-        action: 'clearAllCssSelectors'
+        action: 'clearAllCssSelectors'  // 对应 MessageActions.CLEAR_ALL_CSS_SELECTORS
       });
 
       if (response && response.success) {
@@ -156,7 +156,7 @@ class Popup {
 
       // 通过background script调用runTimeDataService
       const response = await chrome.runtime.sendMessage({
-        action: 'clearAllTaskData'
+        action: 'clearAllTaskData'  // 对应 MessageActions.CLEAR_ALL_TASK_DATA
       });
       
       if (response && response.success) {

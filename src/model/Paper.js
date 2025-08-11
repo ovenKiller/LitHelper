@@ -8,7 +8,7 @@
  * @typedef {Object} PaperProperties
  * @property {string} id - Unique identifier for the paper
  * @property {string} title - Title of the paper
- * @property {string[]} authors - List of authors
+ * @property {string} authors - Authors string
  * @property {string} abstract - Abstract of the paper
  * @property {string[]} urls - URLs to the paper
  * @property {string} pdfUrl - URL to download the PDF
@@ -16,7 +16,7 @@
  * @property {string} venue - Conference or journal name
  * @property {string[]} keywords - Keywords associated with the paper
  * @property {number} citationCount - Number of citations
- * @property {string} source - Source platform (e.g., "googleScholar", "ieee")
+ * @property {string} platform - Platform identifier (e.g., "googleScholar", "ieee")
  * @property {string} allVersionsUrl - URL to all versions of the paper
  * @property {Object} metadata - Additional platform-specific metadata
  */
@@ -34,10 +34,12 @@ class Paper {
     this.id = initialData.id || ''; //注意不同平台之间的数据，id应该保证唯一性
     /** @type {string} */
     this.title = initialData.title || '';
-    /** @type {string[]} */
-    this.authors = initialData.authors || [];
+    /** @type {string} */
+    this.authors = typeof initialData.authors === 'string' ? initialData.authors : (Array.isArray(initialData.authors) ? initialData.authors.join(', ') : '');
     /** @type {string} */
     this.abstract = initialData.abstract || '';
+    /** @type {string[]} */
+    this.urls = initialData.urls || []; // 修复：添加缺失的urls属性初始化
     /** @type {string} */
     this.pdfUrl = initialData.pdfUrl || '';
     /** @type {string[]} */
@@ -45,7 +47,7 @@ class Paper {
     /** @type {number} */
     this.citationCount = initialData.citationCount || 0;
     /** @type {string} */
-    this.source = initialData.source || '';
+    this.platform = initialData.platform || initialData.source || '';
     /** @type {string}  专门在googleScholar平台下使用*/
     this.allVersionsUrl = initialData.allVersionsUrl || '';
     /** @type {HTMLElement | null} */
@@ -80,6 +82,45 @@ class Paper {
     return false;
   }
 
+  /**
+   * 从普通对象创建Paper实例（用于从存储中恢复数据）
+   * @param {Object} data - 普通对象数据
+   * @returns {Paper} Paper实例
+   */
+  static fromObject(data) {
+    if (!data || typeof data !== 'object') {
+      return new Paper();
+    }
+
+    // 创建新的Paper实例，确保所有属性都被正确设置
+    const paper = new Paper({
+      id: data.id,
+      title: data.title,
+      authors: Array.isArray(data.authors) ? data.authors.join(', ') : (data.authors || ''),
+      abstract: data.abstract,
+      urls: Array.isArray(data.urls) ? data.urls : [],
+      pdfUrl: data.pdfUrl,
+      keywords: Array.isArray(data.keywords) ? data.keywords : [],
+      citationCount: data.citationCount,
+      platform: data.platform || data.source,
+      allVersionsUrl: data.allVersionsUrl,
+      sourceUrl: data.sourceUrl,
+      updateTime: data.updateTime,
+      processing: data.processing
+    });
+
+    // element属性不能被序列化，所以不需要恢复
+    return paper;
+  }
+
+  /**
+   * 检查是否有PDF链接
+   * @returns {boolean} 是否有PDF链接
+   */
+  hasPdf() {
+    return !!this.pdfUrl && this.pdfUrl.trim() !== '';
+  }
+
   //未来可以在这里添加更多与Paper对象交互的方法
   //例如：
   // hasPdf() {
@@ -88,7 +129,7 @@ class Paper {
   //
   // generateId() {
   //   if (this.title && this.authors.length > 0) {
-  //     const key = `${this.source}-${this.title}-${this.authors.join(',')}`;
+  //     const key = `${this.platform}-${this.title}-${this.authors.join(',')}`;
   //     // This is a placeholder for a more robust ID generation strategy
   //     // For example, using a hashing function like SHA-256
   //     // For simplicity, using btoa for now if in a browser context, or a simple string otherwise

@@ -1,19 +1,20 @@
 /**
  * messageService.js
- * 
+ *
  * 统一处理扩展内部消息的收发和分发
  */
 
 import { logger } from '../../util/logger.js';
 import { addRuntimeMessageListener, MessageActions, broadcastToAllTabs, sendToMatchingTabs } from '../../util/message.js';
 import { paperBoxManager } from '../feature/paperBoxManager.js';
-import { summarizationHandler } from '../feature/summarizationHandler.js';
 import { TaskService } from './taskService.js';
 import { AiCrawlerTaskHandler } from './taskHandler/aiCrawlerTaskHandler.js';
 import { AiExtractorTaskHandler } from './taskHandler/aiExtractorTaskHandler.js';
+import { OrganizeTaskHandler } from './taskHandler/organizeTaskHandler.js';
 import { Task } from '../../model/task.js';
 import { paperMetadataService } from '../feature/paperMetadataService.js';
-import { AI_CRAWLER_SUPPORTED_TASK_TYPES, AI_EXTRACTOR_SUPPORTED_TASK_TYPES } from '../../constants.js';
+import { paperOrganizationService } from '../feature/paperOrganizationService.js';
+import { AI_CRAWLER_SUPPORTED_TASK_TYPES, AI_EXTRACTOR_SUPPORTED_TASK_TYPES, ORGANIZE_SUPPORTED_TASK_TYPES } from '../../constants.js';
 import { runTimeDataService } from '../../service/runTimeDataService.js';
 
 /**
@@ -61,21 +62,24 @@ export class MessageService {
     try {
       // 创建任务服务实例
       this.taskService = new TaskService();
-      
-      // 创建AI爬虫任务处理器
+
+      // 创建任务处理器
       this.aiCrawlerTaskHandler = new AiCrawlerTaskHandler();
       this.aiExtractorTaskHandler = new AiExtractorTaskHandler();
-      
+      this.organizeTaskHandler = new OrganizeTaskHandler();
+
       // 注册处理器
       this.taskService.registerHandler(AI_CRAWLER_SUPPORTED_TASK_TYPES.PAPER_ELEMENT_CRAWLER, this.aiCrawlerTaskHandler);
       this.taskService.registerHandler(AI_EXTRACTOR_SUPPORTED_TASK_TYPES.PAPER_METADATA_EXTRACTION, this.aiExtractorTaskHandler);
-      
+      this.taskService.registerHandler(ORGANIZE_SUPPORTED_TASK_TYPES.ORGANIZE_PAPER, this.organizeTaskHandler);
+
       // 启动任务服务
       await this.taskService.start();
-      
-      // 注入taskService到paperMetadataService中
+
+      // 注入taskService到各服务中
       paperMetadataService.setTaskService(this.taskService);
-      
+      paperOrganizationService.setTaskService(this.taskService);
+
       logger.log('[MessageService] Task service initialized successfully');
     } catch (error) {
       logger.error('[MessageService] Failed to initialize task service:', error);
@@ -88,34 +92,33 @@ export class MessageService {
    */
   setupMessageListeners() {
     const handlers = new Map();
-    
-    
+
+
     // PaperBox Manager Actions
     handlers.set(MessageActions.GET_PAPER_BOX_DATA, this.handleGetPaperBoxData.bind(this));
     handlers.set(MessageActions.ADD_PAPER_TO_BOX, this.handleAddPaperToBox.bind(this));
     handlers.set(MessageActions.REMOVE_PAPER_FROM_BOX, this.handleRemovePaperFromBox.bind(this));
-    
-    // Summarization Handler Actions
-    handlers.set(MessageActions.SUMMARIZE_PAPER, this.handleSummarizePaper.bind(this));
-    handlers.set(MessageActions.GET_ALL_SUMMARIES, this.handleGetAllSummaries.bind(this));
-    
+
     // Task Service Actions
     handlers.set(MessageActions.ADD_TASK_TO_QUEUE, this.handleAddTaskToQueue.bind(this));
     handlers.set(MessageActions.CLEAR_ALL_TASK_DATA, this.handleClearAllTaskData.bind(this));
 
     // Storage Service Actions
     handlers.set(MessageActions.CLEAR_ALL_CSS_SELECTORS, this.handleClearAllCssSelectors.bind(this));
-    
 
-    
+
+
     // Paper Metadata Service Actions
     handlers.set(MessageActions.PROCESS_PAPER_ELEMENT_LIST, this.handleProcessPaperElementList.bind(this));
     handlers.set(MessageActions.PROCESS_PAPERS, this.handleProcessPapers.bind(this));
     handlers.set(MessageActions.PAPER_PREPROCESSING_COMPLETED, this.handlePaperPreprocessingCompleted.bind(this));
-    
+
+    // Organize Service Actions
+    handlers.set(MessageActions.ORGANIZE_PAPERS, this.handleOrganizePapers.bind(this));
+
     // Setup the single listener with the handler map
     addRuntimeMessageListener(handlers);
-    
+
     logger.log('[MessageService] Message listeners set up successfully');
   }
 
@@ -164,33 +167,7 @@ export class MessageService {
     return true;
   }
 
-  /**
-   * 处理总结论文消息
-   */
-  async handleSummarizePaper(data, sender, sendResponse) {
-    try {
-      const result = await summarizationHandler.summarizePaper(data.paper, data.options);
-      sendResponse(result);
-    } catch (error) {
-      logger.error('[MessageService] Failed to summarize paper:', error);
-      sendResponse({ success: false, error: error.message });
-    }
-    return true;
-  }
 
-  /**
-   * 处理获取所有摘要消息
-   */
-  async handleGetAllSummaries(data, sender, sendResponse) {
-    try {
-      const summaries = await summarizationHandler.getAllSummaries();
-      sendResponse({ success: true, summaries });
-    } catch (error) {
-      logger.error('[MessageService] Failed to get all summaries:', error);
-      sendResponse({ success: false, error: error.message });
-    }
-    return true;
-  }
 
   /**
    * 处理添加任务到队列消息
@@ -202,21 +179,21 @@ export class MessageService {
       }
 
       const { taskKey, taskType, taskParams } = data;
-      
+
       // 创建任务对象
       const task = new Task(taskKey, taskType, taskParams);
-      
+
       // 添加到任务队列 - 移除不必要的await，因为TaskService.addTask是同步的
       // 但handler.addTask可能是异步的，所以需要等待返回的Promise
       const addedTask = this.taskService.addTask(task);
-      
+
       // 如果返回的是Promise，等待它完成
       if (addedTask && typeof addedTask.then === 'function') {
         await addedTask;
       }
-      
+
       logger.log(`[MessageService] Task added to queue: ${taskKey}`);
-      
+
       sendResponse({
         success: true,
         message: '任务已添加到队列',
@@ -238,10 +215,10 @@ export class MessageService {
   async handleClearAllTaskData(data, sender, sendResponse) {
     try {
       logger.log('[MessageService] 收到清除所有任务数据请求');
-      
+
       // 调用runTimeDataService清除所有任务数据
       const result = await runTimeDataService.clearAllTaskData();
-      
+
       if (result.success) {
         logger.log('[MessageService] 成功清除所有任务数据:', result.statistics);
         sendResponse({
@@ -362,25 +339,25 @@ export class MessageService {
   async handleProcessPaperElementList(data, sender, sendResponse) {
     try {
       logger.log('[MessageService] Received paper data processing request:', data);
-      
+
       const { sourceDomain, pageType, papers } = data;
-      
+
       // 调用论文元数据服务处理论文对象列表
       const result = await paperMetadataService.processPapers(
-        sourceDomain, 
-        pageType, 
+        sourceDomain,
+        pageType,
         papers
       );
-      
+
       sendResponse({
         success: result,
         message: result ? '论文数据处理成功' : '论文数据处理失败'
       });
-      
+
     } catch (error) {
       logger.error('[MessageService] Failed to process paper data:', error);
-      sendResponse({ 
-        success: false, 
+      sendResponse({
+        success: false,
         error: error.message || '处理论文数据时发生未知错误'
       });
     }
@@ -393,9 +370,9 @@ export class MessageService {
   async handleProcessPapers(data, sender, sendResponse) {
     try {
       logger.log('[MessageService] 收到处理论文列表请求:', data);
-      
+
       const { sourceDomain, pageType, papers } = data;
-      
+
       // 添加详细的调试信息
       logger.log('[MessageService] 请求详情:', {
         sourceDomain,
@@ -404,25 +381,25 @@ export class MessageService {
         paperMetadataServiceAvailable: !!paperMetadataService,
         taskServiceInjected: !!paperMetadataService?.taskService
       });
-      
+
       // 调用论文元数据服务处理论文对象列表
       const result = await paperMetadataService.processPapers(
-        sourceDomain, 
-        pageType, 
+        sourceDomain,
+        pageType,
         papers
       );
-      
+
       logger.log('[MessageService] 论文处理结果:', { result });
-      
+
       sendResponse({
         success: result,
         message: result ? '论文列表处理成功' : '论文列表处理失败'
       });
-      
+
     } catch (error) {
       logger.error('[MessageService] 处理论文列表失败:', error);
-      sendResponse({ 
-        success: false, 
+      sendResponse({
+        success: false,
         error: error.message || '处理论文列表时发生未知错误'
       });
     }
@@ -435,10 +412,10 @@ export class MessageService {
   async handlePaperPreprocessingCompleted(data, sender, sendResponse) {
     try {
       logger.log('[MessageService] 收到论文预处理完成通知:', data);
-      
+
       // 调用paperMetadataService处理预处理完成事件
       const result = await paperMetadataService.handlePaperPreprocessingCompleted(data);
-      
+
       if (result) {
         logger.log('[MessageService] 论文预处理完成事件处理成功');
         sendResponse({ success: true, message: '论文预处理完成事件处理成功' });
@@ -446,14 +423,30 @@ export class MessageService {
         logger.error('[MessageService] 论文预处理完成事件处理失败');
         sendResponse({ success: false, error: '论文预处理完成事件处理失败' });
       }
-      
     } catch (error) {
       logger.error('[MessageService] 处理论文预处理完成消息失败:', error);
       sendResponse({ success: false, error: error.message || '处理论文预处理完成失败' });
     }
     return true;
   }
+
+  /**
+   * 处理整理论文消息
+   */
+  async handleOrganizePapers(data, sender, sendResponse) {
+    try {
+      logger.log('[MessageService] 收到整理论文请求:', data);
+      const { papers, options } = data || {};
+
+      const result = await paperOrganizationService.organizePapers(papers, options);
+      sendResponse({ success: result, message: result ? '整理论文任务已提交' : '整理论文任务提交失败' });
+    } catch (error) {
+      logger.error('[MessageService] 处理整理论文消息失败:', error);
+      sendResponse({ success: false, error: error.message || '整理论文失败' });
+    }
+    return true;
+  }
 }
 
 // 创建单例实例
-export const messageService = new MessageService(); 
+export const messageService = new MessageService();

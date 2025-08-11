@@ -3,7 +3,7 @@
  * 定义任务的数据模型和相关操作
  */
 
-import { TASK_STATUS, TASK_TYPE, AI_CRAWLER_SUPPORTED_TASK_TYPES, AI_EXTRACTOR_SUPPORTED_TASK_TYPES } from '../constants.js';
+import { TASK_STATUS, TASK_TYPE, AI_CRAWLER_SUPPORTED_TASK_TYPES, AI_EXTRACTOR_SUPPORTED_TASK_TYPES, ORGANIZE_SUPPORTED_TASK_TYPES } from '../constants.js';
 
 export class Task {
   /**
@@ -131,11 +131,12 @@ export class Task {
     if (!this.key || typeof this.key !== 'string') {
       return false;
     }
-    // 验证任务类型，支持通用任务类型和 AI 任务类型
+    // 验证任务类型，支持通用任务类型、AI 爬虫、AI 提取、整理任务类型
     const allTaskTypes = [
-      ...Object.values(TASK_TYPE), 
+      ...Object.values(TASK_TYPE),
       ...Object.values(AI_CRAWLER_SUPPORTED_TASK_TYPES),
-      ...Object.values(AI_EXTRACTOR_SUPPORTED_TASK_TYPES)
+      ...Object.values(AI_EXTRACTOR_SUPPORTED_TASK_TYPES),
+      ...Object.values(ORGANIZE_SUPPORTED_TASK_TYPES)
     ];
     if (!this.type || !allTaskTypes.includes(this.type)) {
       return false;

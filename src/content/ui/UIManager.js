@@ -1,6 +1,6 @@
 /**
  * UIManager.js
- * 
+ *
  * Responsible for managing all UI components
  */
 
@@ -31,67 +31,80 @@ class UIManager {
   async initialize(platform) {
     try {
       logger.log("[UI_TRACE] initialize: UI manager对象初始化");
-      
+
       // 🚀 并行化初始化：将不相互依赖的操作同时执行
       logger.log("[UI_TRACE] initialize: 开始并行初始化操作...");
-      
+
       const [papersData] = await Promise.all([
         // 网络请求：从后台加载论文数据（异步，可能耗时）
         this.loadPapersFromBackground(),
 
         // DOM操作：初始化弹出窗口（同步，较快）
         this.initializePopupWindow(),
-        
+
         // DOM操作：初始化悬浮按钮（同步，较快）
         this.initializeFloatingButton(),
-        
+
         // 平台特定组件初始化（通常较快）
         this.initializePlatformComponents(platform),
-        
+
         // 消息监听器设置（同步，很快）
         this.setupMessageListener()
       ]);
 
-      // 更新悬浮按钮的论文数量（依赖于论文数据，所以放在并行操作完成后）
       if (this.floatingButton) {
         this.floatingButton.setPaperCount(this.papers.size);
-        logger.log(`[UI_TRACE] initialize: 已更新悬浮按钮论文数量: ${this.papers.size}`);
+        logger.log(`[UI_TRACE] initialize: 初始化后设置悬浮按钮论文数量: ${this.papers.size}`);
       }
-      
       logger.log("[UI_TRACE] initialize: UI初始化完成");
     } catch (error) {
       logger.error('[UI_TRACE] initialize: 初始化UI失败:', error);
       throw error;
     }
   }
-  
+
   /**
    * 从后台脚本加载论文数据
    */
   async loadPapersFromBackground() {
     return new Promise((resolve, reject) => {
       logger.log("[UI_TRACE] loadPapersFromBackground: 开始向后台请求论文盒数据");
-      
+
       // 添加超时处理
       const timeoutId = setTimeout(() => {
         logger.warn('[UI_TRACE] loadPapersFromBackground: 请求论文盒数据超时');
         this.papers = new Map(); // 初始化为空Map
         resolve(); // 继续执行后续流程
       }, 3000); // 3秒超时
-      
+
       sendMessageToBackend(MessageActions.GET_PAPER_BOX_DATA)
         .then(response => {
           clearTimeout(timeoutId); // 清除超时
-          
+
           // 打印更多诊断信息
           logger.log('[UI_TRACE] loadPapersFromBackground: 后台脚本响应:', response || '无响应');
-          
+
           if (response && response.success && response.papers) {
             logger.log('[UI_TRACE] loadPapersFromBackground: 从后台脚本接收到论文盒数据:', response.papers);
-            this.papers = new Map(Object.entries(response.papers));
+
+            // 将普通对象转换为Paper实例
+            const paperEntries = Object.entries(response.papers).map(([id, paperData]) => {
+              const paperInstance = Paper.fromObject(paperData);
+              return [id, paperInstance];
+            });
+
+            this.papers = new Map(paperEntries);
             logger.log(`[UI_TRACE] loadPapersFromBackground: 已加载 ${this.papers.size} 篇论文到论文盒`);
             if (this.papers.size > 0) {
               logger.log("[UI_TRACE] loadPapersFromBackground: 论文列表:", Array.from(this.papers.values()).map(p => p.title));
+              // 检查PDF链接恢复情况
+              const papersWithPdf = Array.from(this.papers.values()).filter(p => p.hasPdf());
+              logger.log(`[UI_TRACE] loadPapersFromBackground: 其中 ${papersWithPdf.length} 篇论文有PDF链接`);
+            }
+            // 初始化完成后，更新悬浮按钮计数（如果已创建）
+            if (this.floatingButton) {
+              this.floatingButton.setPaperCount(this.papers.size);
+              logger.log(`[UI_TRACE] loadPapersFromBackground: 已更新悬浮按钮论文数量: ${this.papers.size}`);
             }
           } else {
             logger.warn('[UI_TRACE] loadPapersFromBackground: 后台脚本没有返回有效的论文盒数据');
@@ -107,27 +120,33 @@ class UIManager {
         });
     });
   }
-  
+
   /**
    * 设置消息监听器以接收后台脚本的更新
    */
   setupMessageListener() {
     return new Promise((resolve) => {
       logger.log("[UI_TRACE] setupMessageListener: 设置消息监听器");
-      
+
       const handlers = new Map();
       handlers.set(MessageActions.PAPER_BOX_UPDATED, (data, sender, sendResponse) => {
-        logger.log('[UI_TRACE] setupMessageListener: 收到论文盒更新消息, 数据数量:', 
+        logger.log('[UI_TRACE] setupMessageListener: 收到论文盒更新消息, 数据数量:',
                    Object.keys(data.papers).length);
-        
-        this.papers = new Map(Object.entries(data.papers));
-        
+
+        // 将普通对象转换为Paper实例
+        const paperEntries = Object.entries(data.papers).map(([id, paperData]) => {
+          const paperInstance = Paper.fromObject(paperData);
+          return [id, paperInstance];
+        });
+
+        this.papers = new Map(paperEntries);
+
         // 更新悬浮按钮的论文数量
         if (this.floatingButton) {
           this.floatingButton.setPaperCount(this.papers.size);
           logger.log(`[UI_TRACE] setupMessageListener: 更新悬浮按钮论文数量: ${this.papers.size}`);
         }
-        
+
         // 如果弹窗打开，更新弹窗内容
         if (this.popupWindow && this.popupWindow.isVisible) {
           logger.log('[UI_TRACE] setupMessageListener: 更新弹窗内容');
@@ -159,6 +178,7 @@ class UIManager {
         title: 'Research Summarizer',
         query: this.getCurrentQuery(),
         onClose: () => this.hidePopup(),
+        onStartOrganize: (selectedOptions) => this.handleStartOrganize(selectedOptions),
         onRemovePaper: (paperId) => this.handleRemovePaper(paperId)
       });
       logger.log('[UI_TRACE] initializePopupWindow: 弹出窗口初始化完成');
@@ -190,13 +210,13 @@ class UIManager {
    */
   handleFloatingButtonClick() {
     logger.log('[UI_TRACE] handleFloatingButtonClick: 悬浮按钮被点击');
-    
+
     if (this.popupWindow) {
       if (this.popupWindow.isVisible) {
         this.popupWindow.hide();
       } else {
         this.popupWindow.show();
-        
+
         // 确保所有回调函数都正确传递
         logger.log('[UI_TRACE] handleFloatingButtonClick: 更新论文列表，当前论文数量:', this.papers.size);
         this.popupWindow.updatePaperList(
@@ -216,12 +236,16 @@ class UIManager {
    */
   async handleAddPaper(paper) {
     logger.log("[UI_TRACE] handleAddPaper: 添加论文到论文盒:", paper.title);
-    
+
     // 发送消息给后台脚本，而不是直接操作存储
     try {
       const response = await sendMessageToBackend(MessageActions.ADD_PAPER_TO_BOX, paper);
       if (response && response.success) {
         logger.log(`[UI_TRACE] handleAddPaper: 论文已成功添加，当前共有 ${response.paperCount} 篇论文`);
+        // 立即更新悬浮按钮计数，避免消息监听竞态导致的延迟
+        if (this.floatingButton && typeof response.paperCount === 'number') {
+          this.floatingButton.setPaperCount(response.paperCount);
+        }
       } else {
         logger.error('[UI_TRACE] handleAddPaper: 添加论文到论文盒失败:', response?.error || '未知错误');
       }
@@ -265,9 +289,9 @@ class UIManager {
    */
   async showPopup() {
     if (!this.popupWindow) return;
-    
+
     logger.log('[UI_TRACE] showPopup: 显示弹窗窗口，更新论文列表');
-    
+
     // Update the popup window with papers
     this.popupWindow.updatePaperList(
       Array.from(this.papers.values()),
@@ -276,7 +300,7 @@ class UIManager {
       (paperId, selected) => this.handlePaperSelection(paperId, selected),
       (paperId) => this.handleRemovePaper(paperId)
     );
-    
+
     // Show the popup window
     this.popupWindow.show();
   }
@@ -315,7 +339,7 @@ class UIManager {
     if (this.papers.has(paperId)) {
       this.papers.delete(paperId);
       this.selectedPapers.delete(paperId); // 如果被选中，也从选中集合中移除
-      
+
       // 更新悬浮按钮计数
       if (this.floatingButton) {
         this.floatingButton.setPaperCount(this.papers.size);
@@ -334,7 +358,134 @@ class UIManager {
       logger.log(`[UI_TRACE] handleRemovePaper: 已从UI中移除论文 ${paperId}`);
     }
   }
-  
+
+  /**
+   * Handle start organize action
+   * @param {Object} selectedOptions - Selected options from popup
+   */
+  async handleStartOrganize(selectedOptions) {
+    logger.log('[UI_TRACE] handleStartOrganize: 开始整理论文，选项:', selectedOptions);
+
+    try {
+      // 获取所有论文信息
+      const allPapers = Array.from(this.papers.values());
+      logger.log('[UI_TRACE] handleStartOrganize: 论文盒中的所有论文:', allPapers);
+
+      // 检查是否有论文可以整理
+      if (allPapers.length === 0) {
+        logger.warn('[UI_TRACE] handleStartOrganize: 没有论文可以整理');
+        // TODO: 显示用户提示
+        return;
+      }
+
+      // 调试：检查PDF链接情况
+      const pdfStats = this.analyzePdfLinks(allPapers);
+      logger.log('[UI_TRACE] handleStartOrganize: PDF链接统计:', pdfStats);
+
+      // 获取前台配置（从 PopupWindow 的选项）
+      const frontendConfig = {
+        downloadPdf: selectedOptions.downloadPdf || false,
+        aiTranslate: selectedOptions.aiTranslate || false,
+        generateMindMap: selectedOptions.generateMindMap || false,
+        selectedPapers: Array.from(this.selectedPapers), // 当前选中的论文ID
+        totalPapers: allPapers.length,
+        timestamp: new Date().toISOString()
+      };
+
+      logger.log('[UI_TRACE] handleStartOrganize: 前台配置:', frontendConfig);
+
+      // 输出详细的论文信息到控制台
+      console.group('📚 论文盒整理 - 详细信息');
+      console.log('🔧 前台配置:', frontendConfig);
+      console.log('📄 论文列表 (' + allPapers.length + ' 篇):');
+
+      allPapers.forEach((paper, index) => {
+        console.group(`📖 论文 ${index + 1}: ${paper.title}`);
+        console.log('ID:', paper.id);
+        console.log('标题:', paper.title);
+        console.log('作者:', paper.authors);
+        console.log('年份:', paper.year);
+        console.log('URL:', paper.url);
+        console.log('摘要:', paper.abstract);
+        console.log('引用数:', paper.citationCount);
+        console.log('PDF链接:', paper.pdfUrl);
+        console.log('是否有PDF:', paper.hasPdf ? paper.hasPdf() : 'hasPdf方法不存在');
+        console.log('PDF链接类型:', typeof paper.pdfUrl);
+        console.log('PDF链接长度:', paper.pdfUrl ? paper.pdfUrl.length : 'undefined');
+        console.log('完整对象:', paper);
+        console.groupEnd();
+      });
+
+      console.groupEnd();
+
+      // 🚀 发送整理论文请求到后台
+      logger.log('[UI_TRACE] handleStartOrganize: 发送整理论文请求到后台');
+
+      const response = await sendMessageToBackend(MessageActions.ORGANIZE_PAPERS, {
+        papers: allPapers,
+        options: frontendConfig
+      });
+
+      if (response && response.success) {
+        logger.log('[UI_TRACE] handleStartOrganize: 整理论文任务已成功提交');
+        // TODO: 显示成功提示给用户
+        // TODO: 可以考虑隐藏弹窗或显示进度
+        if (this.popupWindow) {
+          this.popupWindow.hide();
+        }
+      } else {
+        logger.error('[UI_TRACE] handleStartOrganize: 整理论文任务提交失败:', response?.error || '未知错误');
+        // TODO: 显示错误提示给用户
+      }
+
+    } catch (error) {
+      logger.error('[UI_TRACE] handleStartOrganize: 整理论文时发生错误:', error);
+      // TODO: 显示错误提示给用户
+    }
+  }
+
+
+  /**
+   * 分析论文的PDF链接情况（调试用）
+   * @param {Array} papers - 论文数组
+   * @returns {Object} PDF链接统计信息
+   */
+  analyzePdfLinks(papers) {
+    const stats = {
+      total: papers.length,
+      withPdf: 0,
+      withoutPdf: 0,
+      emptyPdf: 0,
+      invalidPdf: 0,
+      details: []
+    };
+
+    papers.forEach((paper, index) => {
+      const pdfInfo = {
+        index: index + 1,
+        title: paper.title,
+        pdfUrl: paper.pdfUrl,
+        hasPdfMethod: typeof paper.hasPdf === 'function',
+        hasPdfResult: typeof paper.hasPdf === 'function' ? paper.hasPdf() : null,
+        pdfUrlType: typeof paper.pdfUrl,
+        pdfUrlLength: paper.pdfUrl ? paper.pdfUrl.length : 0
+      };
+
+      if (!paper.pdfUrl) {
+        stats.withoutPdf++;
+      } else if (paper.pdfUrl.trim() === '') {
+        stats.emptyPdf++;
+      } else if (typeof paper.pdfUrl !== 'string') {
+        stats.invalidPdf++;
+      } else {
+        stats.withPdf++;
+      }
+
+      stats.details.push(pdfInfo);
+    });
+
+    return stats;
+  }
 
   /**
    * Handle paper selection
@@ -343,13 +494,13 @@ class UIManager {
    */
   handlePaperSelection(paperId, selected) {
     logger.log(`[UI_TRACE] handlePaperSelection: 论文 ${paperId} 选择状态变更为: ${selected}`);
-    
+
     if (selected) {
       this.selectedPapers.add(paperId);
     } else {
       this.selectedPapers.delete(paperId);
     }
-    
+
     // Update compare button state
     if (this.popupWindow) {
       this.popupWindow.updateCompareButton(this.selectedPapers.size >= 2);
@@ -364,7 +515,7 @@ class UIManager {
    */
   async handleSummarizeClick(paperId, platform) {
     logger.log(`[UI_TRACE] handleSummarizeClick: 论文ID: ${paperId}`);
-    
+
     const paper = this.papers.get(paperId);
     if (!paper) {
       logger.error(`[UI_TRACE] handleSummarizeClick: 找不到论文: ${paperId}`);
@@ -373,7 +524,7 @@ class UIManager {
 
     try {
       this.showSummaryLoadingIndicator(paperId);
-      
+
       logger.log("[UI_TRACE] handleSummarizeClick: 发送请求到 background.js", paper);
       const response = await sendMessageToBackend(MessageActions.SUMMARIZE_PAPER, { paper });
 
@@ -399,13 +550,13 @@ class UIManager {
    */
   async handleDownloadClick(paperId, platform) {
     logger.log(`[UI_TRACE] handleDownloadClick: 论文ID: ${paperId}`);
-    
+
     const paper = this.papers.get(paperId);
     if (!paper) {
       logger.error(`[UI_TRACE] handleDownloadClick: 找不到论文: ${paperId}`);
       return;
     }
-    
+
     try {
       this.showDownloadLoadingIndicator(paperId);
       logger.log("[UI_TRACE] handleDownloadClick: 发送请求到 background.js", paper);
@@ -434,15 +585,15 @@ class UIManager {
   async handleSummarizeAll(platform) {
     logger.log("[UI_TRACE] handleSummarizeAll: 开始批量摘要");
     const papersToSummarize = Array.from(this.selectedPapers).map(id => this.papers.get(id));
-    
+
     if (papersToSummarize.length === 0) {
       logger.warn("[UI_TRACE] handleSummarizeAll: 没有选中的论文可供摘要");
       return;
     }
-    
+
     try {
       const response = await sendMessageToBackend(MessageActions.SUMMARIZE_ALL_PAPERS, { papers: papersToSummarize });
-      
+
       if (response && response.success) {
         logger.log("[UI_TRACE] handleSummarizeAll: 批量摘要任务已启动");
         // 可能需要一个UI提示，告知用户后台正在处理
@@ -461,15 +612,15 @@ class UIManager {
   async handleDownloadAll(platform) {
     logger.log("[UI_TRACE] handleDownloadAll: 开始批量下载");
     const papersToDownload = Array.from(this.selectedPapers).map(id => this.papers.get(id));
-    
+
     if (papersToDownload.length === 0) {
       logger.warn("[UI_TRACE] handleDownloadAll: 没有选中的论文可供下载");
       return;
     }
-    
+
     try {
       const response = await sendMessageToBackend(MessageActions.DOWNLOAD_ALL_PAPERS, { papers: papersToDownload });
-      
+
       if (response && response.success) {
         logger.log("[UI_TRACE] handleDownloadAll: 批量下载任务已启动");
         // UI提示
@@ -652,12 +803,12 @@ class UIManager {
   removeAllComponents() {
     logger.log("all component removed")
     this.components.clear();
-    
+
     if (this.floatingButton) {
       this.floatingButton.remove();
       this.floatingButton = null;
     }
-    
+
     if (this.popupWindow) {
       this.popupWindow.remove();
       this.popupWindow = null;
@@ -693,4 +844,4 @@ class UIManager {
   }
 }
 
-export default UIManager; 
+export default UIManager;

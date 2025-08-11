@@ -11,7 +11,6 @@
 - **主要职责**: 存储论文的标题、作者、摘要、URL、发表日期等信息。
 - **关联模块**:
   - `paperMetadataService`: 用于获取和填充 `Paper` 对象。
-  - `summarizationHandler`: 对 `Paper` 对象的摘要进行处理。
 
 ### `Task.js`
 

@@ -241,6 +241,9 @@ sequenceDiagram
 - 实现了PAPER_PREPROCESSING_COMPLETED消息处理，支持AiExtractorTaskHandler通过事件机制通知paperMetadataService论文预处理完成，实现自动缓存更新
 - **关键修复**：修复了handleGetPaperBoxData方法永久阻塞问题 - 该方法之前被完全注释掉但仍在handlers中注册，导致GET_PAPER_BOX_DATA消息永远不会调用sendResponse，现已恢复正确实现使用paperBoxManager.getPaperBox()
 
+**TODO 待解决问题：**
+- **环境隔离问题**：由于Chrome扩展的安全模型，messageService实例只能在background script环境中使用，content script（前台页面）无法直接导入和调用messageService。当前前台页面实际使用的是message.js中的sendMessageToBackend()函数通过chrome.runtime.sendMessage()发送消息。这导致设计不一致：messageService提供了notifyAllTabs()等方法但前台无法使用。
+
 ### TaskService 任务服务
 
 **功能定位：**

@@ -140,27 +140,6 @@ class PDFLibProcessor extends PDFProcessor {
 export default PDFLibProcessor;
 ```
 
-## Adding New Summarization Categories
-
-To add new summarization categories:
-
-1. Update the default configuration in `src/config/config.js`:
-
-```javascript
-const DEFAULT_CONFIG = {
-  // ...
-  summarization: {
-    categories: [
-      // Existing categories
-      { id: 'methodology', name: 'Methodology', enabled: true },
-      // Add new category
-      { id: 'novelty', name: 'Novelty & Innovation', enabled: true },
-    ],
-    // ...
-  },
-  // ...
-};
-```
 
 2. Update the UI in `public/popup.html` to include the new category
 3. Update the prompts in your LLM providers to include the new category

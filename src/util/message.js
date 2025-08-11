@@ -1,6 +1,6 @@
 /**
  * message.js
- * 
+ *
  * 统一管理扩展内部的消息通信
  */
 
@@ -14,11 +14,6 @@ export const MessageActions = {
   PAPER_BOX_UPDATED: 'paperBoxUpdated',
   ADD_PAPER_TO_BOX: 'addPaperToBox',
   REMOVE_PAPER_FROM_BOX: 'removePaperFromBox',
-
-  // Summarization related (摘要相关)
-  SUMMARIZE_PAPER: 'summarizePaper',
-  SUMMARIZE_ALL_PAPERS: 'summarizeAllPapers',
-  GET_ALL_SUMMARIES: 'getAllSummaries',
 
   // Download related (下载相关)
   DOWNLOAD_PAPER: 'downloadPaper',
@@ -40,11 +35,21 @@ export const MessageActions = {
 
   // Paper metadata processing (论文元数据处理相关)
   PROCESS_PAPERS: 'processPapers',
+  PROCESS_PAPER_ELEMENT_LIST: 'processPaperElementList',
   PAPER_PREPROCESSING_COMPLETED: 'paperPreprocessingCompleted',
+
+
+  // Organize related (整理论文相关)
+  ORGANIZE_PAPERS: 'organizePapers',
+  // Offscreen document actions (离屏文档操作)
+  PARSE_HTML: 'parseHTML',
+  EXTRACT_ELEMENTS: 'extractElements',
+  COMPRESS_HTML: 'compressHtml',
+  EXTRACT_LARGE_TEXT_BLOCKS: 'extractLargeTextBlocks',
 
   // Internal/System actions (内部/系统操作)
   OPEN_SETTINGS: 'openSettings',
-  
+
   // Notification actions (通知操作)
   SHOW_NOTIFICATION: 'showNotification',
 };
@@ -123,7 +128,7 @@ export function addContentScriptMessageListener(handlers) {
   for (const [action, handler] of handlers) {
     globalContentScriptHandlers.set(action, handler);
   }
-  
+
   // 只在第一次调用时设置监听器
   if (!contentScriptListenerSetup) {
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {

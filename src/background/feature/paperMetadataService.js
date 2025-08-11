@@ -11,7 +11,7 @@ import { Task } from '../../model/task.js';
 
 class PaperMetadataService {
   constructor() {
-    this.paperCache = new Map(); // 以论文题目为key保存论文数据
+    this.paperCache = new Map(); // 以论文ID为key保存论文数据
     this.taskService = null; // 将通过依赖注入的方式设置
   }
 
@@ -86,7 +86,6 @@ class PaperMetadataService {
    */
   async processPaper(paper) {
     try {
-      logger.log(`[PaperMetadataService] 开始处理论文: ${paper.title}`);
       
       // 验证论文对象
       if (!this.validatePaper(paper)) {
@@ -106,7 +105,8 @@ class PaperMetadataService {
           updateTime: paper.updateTime || new Date().toISOString(),
           processing: true
         };
-        this.paperCache.set(paper.title, paperCacheData);
+        logger.log('[PaperMetadataService] 论文缓存数据:', paperCacheData);
+        this.paperCache.set(paper.id, paperCacheData);
         logger.log(`[PaperMetadataService] 论文 ${paper.title} 处理成功并已缓存`);
       }
       
@@ -278,11 +278,11 @@ class PaperMetadataService {
 
   /**
    * 获取缓存的论文数据
-   * @param {string} paperTitle - 论文标题
+   * @param {string} paperId - 论文ID
    * @returns {Object|null} 论文数据
    */
-  getCachedPaper(paperTitle) {
-    return this.paperCache.get(paperTitle) || null;
+  getCachedPaper(paperId) {
+    return this.paperCache.get(paperId) || null;
   }
 
   /**
@@ -292,8 +292,8 @@ class PaperMetadataService {
    */
   cachePaper(paper) {
     try {
-      if (!paper || !paper.title) {
-        logger.error('[PaperMetadataService] 无法缓存论文：论文对象为空或缺少标题');
+      if (!paper || !paper.id) {
+        logger.error('[PaperMetadataService] 无法缓存论文：论文对象为空或缺少ID');
         return false;
       }
 
@@ -305,7 +305,7 @@ class PaperMetadataService {
         abstract: paper.abstract || '',
         updateTime: paper.updateTime || new Date().toISOString()
       };
-      this.paperCache.set(paper.title, paperCacheData);
+      this.paperCache.set(paper.id, paperCacheData);
       logger.log(`[PaperMetadataService] 成功缓存论文: ${paper.title}`);
       return true;
     } catch (error) {
