@@ -9,6 +9,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return;
   }
 
+  // 处理获取网页内容的请求（支持JavaScript渲染）
+  if (request.type === 'FETCH_HTML_WITH_JS') {
+    handleFetchHtmlWithJS(request, sendResponse);
+    return true; // 保持消息通道开放
+  }
+
   if (request.action === MessageActions.PARSE_HTML) {
     const { html, platform } = request.data;
     const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -96,10 +102,114 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
   }
 
-  return true; 
+  return true;
 });
 
+/**
+ * 处理获取网页内容的请求（支持JavaScript渲染）
+ * @param {Object} request - 请求对象
+ * @param {Function} sendResponse - 响应函数
+ */
+async function handleFetchHtmlWithJS(request, sendResponse) {
+  const { url, headers = {} } = request;
 
+  try {
+    console.log(`[Offscreen] 开始获取网页内容: ${url}`);
+
+    // 创建一个隐藏的 iframe 来加载页面
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.style.width = '1024px';
+    iframe.style.height = '768px';
+
+    // 设置 iframe 的沙箱属性，允许脚本执行
+    iframe.sandbox = 'allow-scripts allow-same-origin allow-forms allow-popups';
+
+    document.body.appendChild(iframe);
+
+    // 等待 iframe 加载完成
+    const loadPromise = new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('页面加载超时'));
+      }, 30000); // 30秒超时
+
+      iframe.onload = () => {
+        clearTimeout(timeout);
+        resolve();
+      };
+
+      iframe.onerror = () => {
+        clearTimeout(timeout);
+        reject(new Error('页面加载失败'));
+      };
+    });
+
+    // 设置 iframe 的 src
+    iframe.src = url;
+
+    // 等待页面加载
+    await loadPromise;
+
+    // 等待额外时间让 JavaScript 执行
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
+    // 获取 iframe 中的文档内容
+    let html;
+    try {
+      const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+
+      // 移除脚本和样式标签以减少大小
+      const scripts = iframeDoc.querySelectorAll('script, style, noscript');
+      scripts.forEach(el => el.remove());
+
+      html = iframeDoc.documentElement.outerHTML;
+
+      console.log(`[Offscreen] 成功获取网页内容: ${url}, 长度: ${html.length}`);
+    } catch (crossOriginError) {
+      console.warn(`[Offscreen] 跨域限制，使用 fetch 获取: ${url}`);
+
+      // 如果因为跨域无法访问 iframe 内容，回退到 fetch
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: headers,
+        credentials: 'omit',
+        cache: 'no-cache'
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      html = await response.text();
+    }
+
+    // 清理 iframe
+    document.body.removeChild(iframe);
+
+    sendResponse({
+      success: true,
+      html: html,
+      url: url
+    });
+
+  } catch (error) {
+    console.error(`[Offscreen] 获取网页内容失败: ${url}`, error);
+
+    // 清理可能存在的 iframe
+    const iframes = document.querySelectorAll('iframe[src="' + url + '"]');
+    iframes.forEach(iframe => {
+      if (iframe.parentNode) {
+        iframe.parentNode.removeChild(iframe);
+      }
+    });
+
+    sendResponse({
+      success: false,
+      error: error.message,
+      url: url
+    });
+  }
+}
 
 function generateSelectors(doc, platform) {
   const selectors = {};

@@ -17,7 +17,7 @@ export class AiExtractorTaskHandler extends BaseHandler {
    */
   constructor() {
     const config = {
-      maxConcurrency: 1,
+      maxConcurrency: 3,
       queueConfig: {
         executionQueueSize: 10,
         waitingQueueSize: 20
@@ -134,26 +134,39 @@ export class AiExtractorTaskHandler extends BaseHandler {
       // 创建新的Paper对象并保存预处理数据
       try {
         logger.log(`[${this.handlerName}] 开始创建预处理论文数据`);
-        
-        // 构建新Paper对象的数据
+
+        // 构建新Paper对象的数据 - 保留原始论文对象的所有字段
         const paperData = {
-          id: paper.id,
-          title: paper.title,
-          pdfUrl: paper.pdfUrl || '',
+          ...paper,  // 保留所有原始字段，包括authors等前台提取的字段
           updateTime: new Date().toISOString()
         };
 
-        // 只有在abstract不为null且不为空字符串时才赋值
+        // 记录保留的字段信息
+        logger.log(`[${this.handlerName}] 保留原始论文字段:`, {
+          id: paperData.id,
+          title: paperData.title,
+          authors: paperData.authors,
+          pdfUrl: paperData.pdfUrl,
+          platform: paperData.platform,
+          sourceUrl: paperData.sourceUrl,
+          originalAbstract: paperData.abstract
+        });
+
+        // 只有在abstract不为null且不为空字符串时才更新摘要
         if (abstract && typeof abstract === 'string' && abstract.trim()) {
           paperData.abstract = abstract.trim();
           logger.log(`[${this.handlerName}] 论文 ${paper.title} 提取到摘要，长度: ${abstract.length}`);
         } else {
-          logger.log(`[${this.handlerName}] 论文 ${paper.title} 未提取到有效摘要`);
+          logger.log(`[${this.handlerName}] 论文 ${paper.title} 未提取到有效摘要，保留原有摘要: ${paperData.abstract || '无'}`);
+        }
+
+        // 移除不需要序列化的字段
+        if (paperData.element) {
+          delete paperData.element;
         }
 
         // 创建新的Paper对象
         const preprocessedPaper = new Paper(paperData);
-        logger.log(`[${this.handlerName}] 预处理论文数据: ${preprocessedPaper}`);
     
         // 通过messageService处理论文预处理完成事件
         try {
@@ -293,30 +306,43 @@ export class AiExtractorTaskHandler extends BaseHandler {
 
       // 第三步：对提取到的论文项进行进一步解析
       let parsedPaperItems = null;
-      if (paperItems && paperItems.length >= 2) {
+      if (paperItems && paperItems.length > 0) {
         try {
           logger.log(`[${this.handlerName}] 开始对论文项进行进一步解析，总数: ${paperItems.length}`);
-          
-          // 随机选择两项
-          const shuffled = [...paperItems].sort(() => 0.5 - Math.random());
-          const selectedItems = shuffled.slice(0, 2);
-          
-          logger.log(`[${this.handlerName}] 随机选择了 2 个论文项进行并行解析`);
-          
-          // 创建两个并行的异步任务
-          const parseTask1 = this.parsePaperItem(selectedItems[0], paper, 0);
-          const parseTask2 = this.parsePaperItem(selectedItems[1], paper, 1);
-          
-          // 并行执行解析任务
-          const [abstract1, abstract2] = await Promise.all([
-            parseTask1,
-            parseTask2
-          ]);
-          const abstract = abstract1 && abstract2 ? 
-            (abstract1.length > abstract2.length ? abstract1 : abstract2) :
-            abstract1 || abstract2 || null;
-          
-          return abstract;
+
+          // 配置：期望处理的论文项数量，可以根据需要调整
+          const DESIRED_PARSE_COUNT = 3;
+
+          // 实际选择的数量：取期望数量和实际可用数量的较小值
+          const actualParseCount = Math.min(DESIRED_PARSE_COUNT, paperItems.length);
+          const selectedItems = paperItems.slice(0, actualParseCount);
+
+          logger.log(`[${this.handlerName}] 选择前 ${actualParseCount} 个论文项进行并行解析（期望${DESIRED_PARSE_COUNT}个，实际可用${paperItems.length}个）`);
+
+          // 动态创建解析任务
+          const parseTasks = selectedItems.map((item, index) =>
+            this.parsePaperItem(item, paper, index)
+          );
+
+          // 并行执行所有解析任务
+          const abstractResults = await Promise.all(parseTasks);
+
+          // 过滤出有效的摘要并选择最长的作为最终结果
+          const validAbstracts = abstractResults.filter(result =>
+            result && typeof result === 'string' && result.trim()
+          );
+
+          if (validAbstracts.length > 0) {
+            const abstract = validAbstracts.reduce((longest, current) =>
+              current.length > longest.length ? current : longest
+            );
+            logger.log(`[${this.handlerName}] 从 ${actualParseCount} 个论文项中成功提取到 ${validAbstracts.length} 个有效摘要，选择最长的作为结果`);
+            return abstract;
+          } else {
+            logger.warn(`[${this.handlerName}] 从 ${actualParseCount} 个论文项中未提取到任何有效摘要`);
+            return null;
+          }
+
         } catch (parseError) {
           logger.warn(`[${this.handlerName}] 论文项并行解析过程出错: ${parseError.message}`);
 
@@ -327,7 +353,7 @@ export class AiExtractorTaskHandler extends BaseHandler {
           };
         }
       } else {
-        logger.log(`[${this.handlerName}] 论文项数量不足（${paperItems ? paperItems.length : 0}），跳过进一步解析`);
+        logger.log(`[${this.handlerName}] 没有可用的论文项进行解析（总数: ${paperItems ? paperItems.length : 0}）`);
       }
 
       logger.log(`[${this.handlerName}] 论文HTML解析完成`);
@@ -428,8 +454,7 @@ export class AiExtractorTaskHandler extends BaseHandler {
         try {
           // 压缩论文项的HTML内容
           const textList = await htmlParserService.extractLargeTextBlocks(paperHtml, 150);
-          logger.log(`[${this.handlerName}] 论文项 ${index} 提取到 ${textList.length} 个文本块`);
-          
+          logger.log(`${paper.title} 对应的网页文本 ${textList}`);
           // 对文本列表进行处理：添加序号和截断处理
           const processedTextList = textList.map((text, textIndex) => {
             // 添加序号

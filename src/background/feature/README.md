@@ -56,10 +56,11 @@
 6. **新增** - 解析事件数据并缓存预处理完成的论文
 
 缓存机制：
-- 使用Map结构存储论文数据，键为论文标题
+- 使用Map结构存储论文数据，键为论文ID
 - 提供论文缓存的增删查改操作
 - **新增** - 支持事件驱动的自动缓存更新
-- **优化** - 缓存字段限制：只缓存必要字段（id、title、pdfUrl、abstract、updateTime），避免存储完整paper对象
+- **优化** - 缓存完整的论文对象：存储所有论文字段（id、title、authors、abstract、pdfUrl、keywords、citationCount、platform等），确保数据完整性
+- 自动移除不可序列化的字段（如DOM element）
 - 缓存成功率监控和日志记录
 
 依赖注入：

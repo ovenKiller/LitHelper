@@ -89,7 +89,7 @@ class PaperOrganizationService {
   }
 
   /**
-   * 批次处理主流程：逐篇论文等待metadata就绪后提交整理任务
+   * 批次处理主流程：等待所有论文metadata就绪后提交整理任务
    * @param {string} batchId
    */
   async _startBatchProcessing(batchId) {
@@ -98,64 +98,105 @@ class PaperOrganizationService {
     batch.status = BATCH_STATUS.RUNNING;
     this._recomputeBatchProgress(batch);
 
-    // 顺序/并行都可以，这里采用并行等待 + 就绪即提交
-    await Promise.all(
-      batch.papers.map(async (pItem) => {
-        try {
-          // 阶段1：等待元数据预处理完成
-          await this._waitForMetadataReady(pItem.paper.id);
-          pItem.status = PAPER_STATUS.METADATA_READY;
-          this._recomputeBatchProgress(batch);
+    try {
+      // 阶段1：阻塞式等待所有论文的元数据预处理完成
+      const paperIds = batch.papers.map(pItem => pItem.paper.id);
+      const readyPapers = await this._waitForAllPapersMetadataReady(paperIds);
 
-          // 阶段2：提交到 OrganizeTaskHandler（每篇论文一个任务）
-          const taskKey = await this._submitOrganizeTask(batch, pItem.paper, batch.options);
-          pItem.status = PAPER_STATUS.ORGANIZING;
-          pItem.organizeTaskKey = taskKey;
-          this.taskIndex.set(taskKey, { batchId: batch.id, paperId: pItem.paper.id });
-          this._recomputeBatchProgress(batch);
-
-          logger.log(`[PaperOrganizationService] 已提交 Organize 任务: ${taskKey} (${pItem.paper.title})`);
-          // 结果感知：当前还没有来自 Handler 的完成事件，留待后续接入。
-          // 这里不主动标记完成，等待外部通知（notifyOrganizeTaskCompleted）。
-        } catch (err) {
-          pItem.status = PAPER_STATUS.FAILED;
-          pItem.error = err?.message || '元数据等待/任务提交失败';
-          this._recomputeBatchProgress(batch);
+      // 更新所有论文状态为就绪，并更新元数据信息
+      batch.papers.forEach(pItem => {
+        pItem.status = PAPER_STATUS.METADATA_READY;
+        // 从就绪的论文数据中找到对应的元数据并更新
+        const readyPaper = readyPapers.find(rp => rp.id === pItem.paper.id);
+        if (readyPaper) {
+          // 更新论文的元数据信息
+          Object.assign(pItem.paper, readyPaper);
         }
-      })
-    );
+      });
+      this._recomputeBatchProgress(batch);
 
-    // 并行提交完成后，若没有进行中的任务且无失败，则置为完成
+      // 阶段2：并行提交所有论文到 OrganizeTaskHandler
+      await Promise.all(
+        batch.papers.map(async (pItem) => {
+          try {
+            const taskKey = await this._submitOrganizeTask(pItem.paper, batch.options);
+            pItem.status = PAPER_STATUS.ORGANIZING;
+            pItem.organizeTaskKey = taskKey;
+            this.taskIndex.set(taskKey, { batchId: batch.id, paperId: pItem.paper.id });
+            this._recomputeBatchProgress(batch);
+
+            logger.log(`[PaperOrganizationService] 已提交 Organize 任务: ${taskKey} (${pItem.paper.title})`);
+            // 结果感知：当前还没有来自 Handler 的完成事件，留待后续接入。
+            // 这里不主动标记完成，等待外部通知（notifyOrganizeTaskCompleted）。
+          } catch (err) {
+            pItem.status = PAPER_STATUS.FAILED;
+            pItem.error = err?.message || '任务提交失败';
+            this._recomputeBatchProgress(batch);
+          }
+        })
+      );
+    } catch (err) {
+      // 如果等待元数据失败，标记所有论文为失败
+      batch.papers.forEach(pItem => {
+        if (pItem.status === PAPER_STATUS.WAITING_METADATA) {
+          pItem.status = PAPER_STATUS.FAILED;
+          pItem.error = err?.message || '元数据等待失败';
+        }
+      });
+      this._recomputeBatchProgress(batch);
+    }
+
+    // 处理完成后，若没有进行中的任务且无失败，则置为完成
     this._finalizeBatchIfPossible(batch);
   }
 
   /**
-   * 等待某篇论文的metadata预处理完成（通过 paperMetadataService 缓存判断）
-   * @param {string} paperId
+   * 阻塞式等待所有论文的metadata预处理完成（通过 paperMetadataService 缓存判断）
+   * @param {Array<string>} paperIds - 论文ID数组
+   * @returns {Promise<Array<Object>>} 返回所有就绪的论文数据
    */
-  async _waitForMetadataReady(paperId) {
+  async _waitForAllPapersMetadataReady(paperIds) {
     const start = Date.now();
+
     while (true) {
-      const cached = paperMetadataService.getCachedPaper(paperId);
-      // 判定：缓存存在 且 未处于 processing=true 即视为就绪
-      if (cached && cached.processing !== true) {
-        return true;
+      const readyPapers = [];
+      let allReady = true;
+
+      // 检查所有论文的状态
+      for (const paperId of paperIds) {
+        const cached = paperMetadataService.getCachedPaper(paperId);
+        // 判定：缓存存在 且 未处于 processing=true 即视为就绪
+        if (cached && cached.processing !== true) {
+          readyPapers.push(cached);
+        } else {
+          allReady = false;
+          break;
+        }
       }
+
+      // 如果所有论文都就绪，返回结果
+      if (allReady) {
+        logger.log(`[PaperOrganizationService] 所有论文元数据已就绪，共 ${readyPapers.length} 篇`);
+        return readyPapers;
+      }
+
+      // 检查超时
       if (Date.now() - start > this.metadataWaitTimeoutMs) {
-        throw new Error('等待元数据超时');
+        throw new Error(`等待所有论文元数据超时，已等待 ${Math.round((Date.now() - start) / 1000)} 秒`);
       }
+
+      // 等待一段时间后重试
       await new Promise(r => setTimeout(r, this.metadataWaitIntervalMs));
     }
   }
 
   /**
    * 提交单篇论文的 Organize 任务
-   * @param {Batch} batch
    * @param {Object} paper
    * @param {Object} options
    * @returns {Promise<string>} organize 任务的 taskKey
    */
-  async _submitOrganizeTask(batch, paper, options) {
+  async _submitOrganizeTask(paper, options) {
     if (!this.taskService) {
       throw new Error('TaskService not initialized. Please call setTaskService() first.');
     }
