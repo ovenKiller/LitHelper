@@ -112,18 +112,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
  */
 async function handleFetchHtmlWithJS(request, sendResponse) {
   const { url, headers = {} } = request;
+  let iframe = null; // 在函数作用域声明 iframe
 
   try {
     console.log(`[Offscreen] 开始获取网页内容: ${url}`);
 
+
     // 创建一个隐藏的 iframe 来加载页面
-    const iframe = document.createElement('iframe');
+    iframe = document.createElement('iframe');
     iframe.style.display = 'none';
     iframe.style.width = '1024px';
     iframe.style.height = '768px';
 
-    // 设置 iframe 的沙箱属性，允许脚本执行
-    iframe.sandbox = 'allow-scripts allow-same-origin allow-forms allow-popups';
+    // 设置 iframe 的沙箱属性，允许脚本执行和更多权限
+    // 注意：某些网站可能仍然会阻止跨域访问
+    iframe.sandbox = 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation allow-top-navigation-by-user-activation allow-downloads';
+
+    // 尝试设置更宽松的权限策略
+    iframe.setAttribute('referrerpolicy', 'no-referrer-when-downgrade');
+    iframe.setAttribute('loading', 'eager');
 
     document.body.appendChild(iframe);
 
@@ -135,13 +142,22 @@ async function handleFetchHtmlWithJS(request, sendResponse) {
 
       iframe.onload = () => {
         clearTimeout(timeout);
+        console.log(`[Offscreen] iframe 加载完成: ${url}`);
         resolve();
       };
 
-      iframe.onerror = () => {
+      iframe.onerror = (event) => {
         clearTimeout(timeout);
+        console.error(`[Offscreen] iframe 加载错误: ${url}`, event);
         reject(new Error('页面加载失败'));
       };
+
+      // 添加额外的错误监听
+      iframe.addEventListener('error', (event) => {
+        clearTimeout(timeout);
+        console.error(`[Offscreen] iframe 错误事件: ${url}`, event);
+        reject(new Error('页面加载失败'));
+      });
     });
 
     // 设置 iframe 的 src
@@ -166,25 +182,71 @@ async function handleFetchHtmlWithJS(request, sendResponse) {
 
       console.log(`[Offscreen] 成功获取网页内容: ${url}, 长度: ${html.length}`);
     } catch (crossOriginError) {
-      console.warn(`[Offscreen] 跨域限制，使用 fetch 获取: ${url}`);
+      console.warn(`[Offscreen] 跨域限制，使用 fetch 获取: ${url}`, crossOriginError);
 
-      // 如果因为跨域无法访问 iframe 内容，回退到 fetch
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: headers,
-        credentials: 'omit',
-        cache: 'no-cache'
-      });
+      try {
+        // 如果因为跨域无法访问 iframe 内容，回退到 fetch
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            ...headers
+          },
+          credentials: 'omit',
+          cache: 'no-cache'
+        });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        if (!response.ok) {
+          let errorDetail = `HTTP ${response.status}: ${response.statusText}`;
+
+          // 针对常见错误码提供更详细的说明
+          if (response.status === 403) {
+            errorDetail += ' - 可能原因：需要登录访问、反爬虫保护、或IP被限制';
+          } else if (response.status === 404) {
+            errorDetail += ' - 页面不存在';
+          } else if (response.status === 429) {
+            errorDetail += ' - 请求过于频繁，被限流';
+          } else if (response.status >= 500) {
+            errorDetail += ' - 服务器内部错误';
+          }
+
+          throw new Error(errorDetail);
+        }
+
+        html = await response.text();
+        console.log(`[Offscreen] fetch 回退成功: ${url}, 长度: ${html.length}`);
+      } catch (fetchError) {
+        console.error(`[Offscreen] fetch 回退也失败: ${url}`, fetchError);
+
+        // 提供更友好的错误信息
+        let friendlyError = `无法获取页面内容: `;
+        friendlyError += `iframe 失败 (${crossOriginError.message}), `;
+        friendlyError += `fetch 失败 (${fetchError.message})`;
+
+        // 针对 ACM 等学术网站的特殊提示
+        if (url.includes('acm.org') || url.includes('ieee.org') || url.includes('springer.com')) {
+          friendlyError += ' - 提示：该学术网站可能需要机构访问权限或订阅';
+        }
+
+        throw new Error(friendlyError);
       }
-
-      html = await response.text();
     }
 
     // 清理 iframe
-    document.body.removeChild(iframe);
+    try {
+      if (iframe && iframe.parentNode) {
+        document.body.removeChild(iframe);
+        console.log(`[Offscreen] iframe 已清理: ${url}`);
+      }
+    } catch (cleanupError) {
+      console.warn(`[Offscreen] iframe 清理失败: ${url}`, cleanupError);
+    }
 
     sendResponse({
       success: true,
@@ -196,17 +258,94 @@ async function handleFetchHtmlWithJS(request, sendResponse) {
     console.error(`[Offscreen] 获取网页内容失败: ${url}`, error);
 
     // 清理可能存在的 iframe
-    const iframes = document.querySelectorAll('iframe[src="' + url + '"]');
-    iframes.forEach(iframe => {
-      if (iframe.parentNode) {
-        iframe.parentNode.removeChild(iframe);
+    try {
+      if (iframe && iframe.parentNode) {
+        document.body.removeChild(iframe);
       }
-    });
+      // 额外清理：查找所有可能的 iframe
+      const iframes = document.querySelectorAll('iframe');
+      iframes.forEach(frame => {
+        if (frame.src === url && frame.parentNode) {
+          frame.parentNode.removeChild(frame);
+        }
+      });
+    } catch (cleanupError) {
+      console.warn(`[Offscreen] 错误清理失败: ${url}`, cleanupError);
+    }
 
     sendResponse({
       success: false,
       error: error.message,
       url: url
+    });
+  }
+}
+
+/**
+ * 专门处理学术网站的 fetch 请求
+ * @param {string} url - 目标URL
+ * @param {Object} headers - 请求头
+ * @param {Function} sendResponse - 响应函数
+ */
+async function handleAcademicSiteFetch(url, headers, sendResponse) {
+  try {
+    console.log(`[Offscreen] 使用学术网站专用 fetch: ${url}`);
+
+    // 为学术网站使用更真实的浏览器请求头
+    const academicHeaders = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'DNT': '1',
+      'Connection': 'keep-alive',
+      'Upgrade-Insecure-Requests': '1',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'none',
+      'Sec-Fetch-User': '?1',
+      'Cache-Control': 'max-age=0',
+      ...headers
+    };
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: academicHeaders,
+      credentials: 'omit',
+      cache: 'no-cache',
+      redirect: 'follow'
+    });
+
+    if (!response.ok) {
+      let errorDetail = `HTTP ${response.status}: ${response.statusText}`;
+
+      if (response.status === 403) {
+        errorDetail += ' - 学术网站访问被拒绝，可能需要机构订阅或登录';
+      } else if (response.status === 429) {
+        errorDetail += ' - 请求过于频繁，建议稍后重试';
+      }
+
+      throw new Error(errorDetail);
+    }
+
+    const html = await response.text();
+    console.log(`[Offscreen] 学术网站 fetch 成功: ${url}, 长度: ${html.length}`);
+
+    sendResponse({
+      success: true,
+      html: html,
+      url: url,
+      method: 'academic-fetch'
+    });
+
+  } catch (error) {
+    console.error(`[Offscreen] 学术网站 fetch 失败: ${url}`, error);
+
+    sendResponse({
+      success: false,
+      error: `学术网站访问失败: ${error.message}`,
+      url: url,
+      method: 'academic-fetch'
     });
   }
 }

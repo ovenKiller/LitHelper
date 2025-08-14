@@ -46,6 +46,7 @@ export const MessageActions = {
   EXTRACT_ELEMENTS: 'extractElements',
   COMPRESS_HTML: 'compressHtml',
   EXTRACT_LARGE_TEXT_BLOCKS: 'extractLargeTextBlocks',
+  EXTRACT_LARGE_TEXT_BLOCKS_CLEAN: 'EXTRACT_LARGE_TEXT_BLOCKS_CLEAN',
 
   // Internal/System actions (内部/系统操作)
   OPEN_SETTINGS: 'openSettings',

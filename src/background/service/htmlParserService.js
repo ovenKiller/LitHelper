@@ -6,6 +6,7 @@
 
 import { logger } from '../../util/logger.js';
 import { MessageActions } from '../../util/message.js';
+import { offscreenManager } from './offscreenManager.js';
 
 /**
  * HTML解析服务类
@@ -29,7 +30,7 @@ export class HtmlParserService {
       logger.log('[HtmlParserService] Initializing HTML parser service...');
       
       // 确保 Offscreen 文档存在
-      await this.ensureOffscreenDocument();
+      await offscreenManager.ensureOffscreenDocument();
       
       this.isInitialized = true;
       logger.log('[HtmlParserService] HTML parser service initialized successfully');
@@ -255,6 +256,7 @@ export class HtmlParserService {
 
       if (response && response.success) {
         logger.log(`[HtmlParserService] Successfully extracted ${response.data.textBlocks.length} text blocks`);
+        logger.log(`[HtmlParserService] Text blocks result:`, response.data.textBlocks);
         return response.data.textBlocks;
       } else {
         throw new Error(response?.error || 'Unknown error occurred during large text blocks extraction');
@@ -266,30 +268,40 @@ export class HtmlParserService {
   }
 
   /**
-   * 确保 Offscreen 文档存在
-   * @returns {Promise<void>}
+   * 提取HTML中的大文本块（清理版本，会移除CSS和脚本）
+   * @param {string} html - 完整HTML字符串
+   * @param {number} minLength - 最小文字长度，默认100
+   * @returns {Promise<Array<string>>} 文本块数组
    */
-  async ensureOffscreenDocument() {
+  async extractLargeTextBlocksClean(html, minLength = 100) {
     try {
-      // 检查是否已存在 Offscreen 文档
-      const existingContexts = await chrome.runtime.getContexts({
-        contextTypes: ['OFFSCREEN_DOCUMENT']
-      });
+      if (!this.isInitialized) {
+        await this.initialize();
+      }
+
+      if (!html || typeof html !== 'string') {
+        throw new Error('HTML parameter is required and must be a string');
+      }
+
+      logger.log(`[HtmlParserService] Extracting clean large text blocks (minLength: ${minLength})`);
       
-      if (existingContexts.length === 0) {
-        // 创建 Offscreen 文档
-        await chrome.offscreen.createDocument({
-          url: 'offscreen.html',
-          reasons: ['DOM_PARSER'],
-          justification: 'Parse HTML content using DOMParser for CSS selector extraction'
-        });
-        
-        logger.log('[HtmlParserService] Offscreen document created');
+      const response = await chrome.runtime.sendMessage({
+        target: 'offscreen',
+        action: MessageActions.EXTRACT_LARGE_TEXT_BLOCKS_CLEAN,
+        data: {
+          html,
+          minLength
+        }
+      });
+
+      if (response && response.success) {
+        logger.log(`[HtmlParserService] Successfully extracted ${response.data.textBlocks.length} clean text blocks`);
+        return response.data.textBlocks;
       } else {
-        logger.log('[HtmlParserService] Offscreen document already exists');
+        throw new Error(response?.error || 'Unknown error occurred during clean large text blocks extraction');
       }
     } catch (error) {
-      logger.error('[HtmlParserService] Failed to ensure offscreen document:', error);
+      logger.error('[HtmlParserService] Failed to extract clean large text blocks:', error);
       throw error;
     }
   }

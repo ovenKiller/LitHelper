@@ -310,6 +310,7 @@ function extractLargeTextBlocks(domElement, minLength = 100) {
         if (IGNORE_ELEMENTS.includes(tagName)) {
             return [];
         }
+        
         try {
             const style = window.getComputedStyle(element);
             if (style.display === 'none' || style.visibility === 'hidden') {
@@ -319,28 +320,34 @@ function extractLargeTextBlocks(domElement, minLength = 100) {
             console.warn('无法获取元素样式:', e);
         }
 
+        // 先检查当前元素是否为叶子文本节点
+        const cleanElement = removeFormatTags(element);
+        if (!cleanElement) {
+            return [];
+        }
+        
+        const originalTextContent = cleanElement.textContent;
+        const cleanedTextContent = cleanText(originalTextContent);
+
+        // 检查是否有结构性子元素（非格式标签的子元素）
+        const hasStructuralChildren = Array.from(element.children).some(child => {
+            if (!child) return false;
+            const childTagName = (child.tagName || 'div').toLowerCase();
+            return !FORMAT_TAGS.includes(childTagName) && !IGNORE_ELEMENTS.includes(childTagName);
+        });
+
+        // 如果没有结构性子元素且当前元素有有效文本，作为叶子节点处理
+        if (!hasStructuralChildren && isValidTextContent(cleanedTextContent, minLength)) {
+            return [cleanedTextContent];
+        }
+
+        // 否则递归处理子元素
         let childBlocks = [];
         for (const child of element.children) {
             childBlocks = childBlocks.concat(findBlocksRecursive(child));
         }
 
-        if (childBlocks.length > 0) {
-            return childBlocks;
-        }
-
-        const cleanElement = removeFormatTags(element);
-        if (!cleanElement) {
-            return [];
-        }
-        const originalTextContent = cleanElement.textContent;
-        // 清理文本：移除不可见字符，规范化空白字符
-        const cleanedTextContent = cleanText(originalTextContent);
-
-        if (isValidTextContent(cleanedTextContent, minLength)) {
-            return [cleanedTextContent];
-        }
-
-        return [];
+        return childBlocks;
     }
 
     return findBlocksRecursive(domElement);
