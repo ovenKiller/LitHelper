@@ -307,4 +307,189 @@ input:checked + .rs-toggle-slider:before {
 
 .rs-success {
   background-color: #34a853 !important;
-} 
+}
+
+/* 新增配置区域样式 */
+.rs-config-section {
+  margin-bottom: 16px;
+  padding: 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  background-color: #fafafa;
+}
+
+.rs-language-select,
+.rs-standard-select {
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 14px;
+  background-color: white;
+}
+
+.rs-language-select:focus,
+.rs-standard-select:focus {
+  outline: none;
+  border-color: #4285f4;
+  box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.2);
+}
+
+.rs-edit-prompt-btn {
+  background-color: #f0f0f0;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.rs-edit-prompt-btn:hover {
+  background-color: #e8e8e8;
+}
+
+.rs-edit-prompt-btn:active {
+  background-color: #d8d8d8;
+}
+
+/* 存储路径设置样式 */
+.rs-storage-section {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  background-color: #fafafa;
+}
+
+.rs-storage-title {
+  font-weight: bold;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #333;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rs-storage-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.rs-storage-label {
+  font-size: 12px;
+  margin-bottom: 4px;
+  color: #666;
+  font-weight: 500;
+}
+
+.rs-working-dir-input,
+.rs-task-dir-input {
+  flex: 1;
+  padding: 6px 8px;
+  font-size: 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background-color: white;
+  transition: border-color 0.2s ease;
+}
+
+.rs-working-dir-input:focus,
+.rs-task-dir-input:focus {
+  outline: none;
+  border-color: #4285f4;
+  box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.1);
+}
+
+.rs-working-dir-input[readonly] {
+  background-color: #f8f9fa;
+  color: #6c757d;
+}
+
+.rs-browse-btn,
+.rs-auto-gen-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.rs-browse-btn {
+  background-color: #007cba;
+  color: white;
+}
+
+.rs-browse-btn:hover {
+  background-color: #005a87;
+  transform: translateY(-1px);
+}
+
+.rs-auto-gen-btn {
+  background-color: #28a745;
+  color: white;
+}
+
+.rs-auto-gen-btn:hover {
+  background-color: #1e7e34;
+  transform: translateY(-1px);
+}
+
+.rs-browse-btn:active,
+.rs-auto-gen-btn:active {
+  transform: translateY(0);
+}
+
+.rs-path-preview {
+  padding: 8px;
+  font-size: 11px;
+  background-color: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 4px;
+  color: #495057;
+  word-break: break-all;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  line-height: 1.4;
+  margin-top: 4px;
+}
+
+.rs-path-preview:empty::before {
+  content: '请先选择工作目录';
+  color: #adb5bd;
+  font-style: italic;
+}
+
+/* 存储路径容器 */
+.rs-storage-container {
+  margin-bottom: 8px;
+}
+
+.rs-storage-container:last-child {
+  margin-bottom: 0;
+}
+
+/* 路径预览容器 */
+.rs-path-preview-container {
+  margin-top: 8px;
+}
+
+/* 响应式调整 */
+@media (max-width: 600px) {
+  .rs-storage-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  .rs-browse-btn,
+  .rs-auto-gen-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}

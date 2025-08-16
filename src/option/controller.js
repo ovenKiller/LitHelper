@@ -34,6 +34,11 @@ export class Controller {
     this.view.bindDefaultModelChange(this.handleDefaultModelChange.bind(this));
     this.view.bindResetSettings(this.handleResetSettings.bind(this));
     this.view.bindSaveSettings(this.handleSaveSettings.bind(this));
+
+    // Classification management
+    this.view.bindAddClassificationStandard(this.handleAddClassificationStandard.bind(this));
+    this.view.bindClassificationAction(this.handleClassificationAction.bind(this));
+    this.view.bindClassificationChange(this.handleClassificationChange.bind(this));
   }
   
   // --- Event Handlers ---
@@ -145,4 +150,62 @@ export class Controller {
       this.view.showSaveStatus('保存设置失败，请重试。', false);
     }
   }
-} 
+
+  // --- Classification Management Handlers ---
+
+  async handleAddClassificationStandard() {
+    console.log('[CONTROLLER] handleAddClassificationStandard called');
+    try {
+      const standardData = this.view.showAddClassificationStandardDialog();
+      console.log('[CONTROLLER] Dialog result:', standardData);
+      if (!standardData) return;
+
+      const id = await this.configService.addClassificationStandard(standardData);
+      await this.renderPage();
+      this.view.showSaveStatus('分类标准添加成功！');
+      logger.log('Classification standard added successfully:', id);
+    } catch (error) {
+      logger.error('Failed to add classification standard:', error);
+      this.view.showSaveStatus('添加分类标准失败，请重试。', false);
+    }
+  }
+
+  async handleClassificationAction(action, standardId) {
+    try {
+      if (action === 'delete') {
+        if (confirm('确定要删除这个分类标准吗？')) {
+          const result = await this.configService.deleteClassificationStandard(standardId);
+          if (result) {
+            await this.renderPage();
+            this.view.showSaveStatus('分类标准删除成功！');
+          } else {
+            this.view.showSaveStatus('删除失败，该分类标准不存在。', false);
+          }
+        }
+      }
+    } catch (error) {
+      logger.error('Failed to handle classification action:', error);
+      if (error.message.includes('不能删除系统预设')) {
+        this.view.showSaveStatus('不能删除系统预设的分类标准。', false);
+      } else {
+        this.view.showSaveStatus('操作失败，请重试。', false);
+      }
+    }
+  }
+
+  async handleClassificationChange(standardId, field, value) {
+    try {
+      const updates = {};
+      updates[field] = value;
+
+      const result = await this.configService.updateClassificationStandard(standardId, updates);
+      if (result) {
+        // 自动保存，不显示状态消息以避免频繁提示
+        await this.configService.saveConfig();
+      }
+    } catch (error) {
+      logger.error('Failed to update classification standard:', error);
+      this.view.showSaveStatus('更新失败，请重试。', false);
+    }
+  }
+}

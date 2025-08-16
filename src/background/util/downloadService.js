@@ -101,8 +101,82 @@ async function cancelDownload(downloadId) {
   }
 }
 
+/**
+ * 在文件管理器中显示下载的文件
+ * @param {number} downloadId 下载ID
+ * @returns {Promise<Object>} 操作结果
+ */
+async function showDownloadInFolder(downloadId) {
+  try {
+    logger.debug(`[DownloadService] 在文件管理器中显示下载: ${downloadId}`);
+
+    // 使用 chrome.downloads.show() 在系统文件管理器中显示文件
+    await chrome.downloads.show(downloadId);
+
+    logger.debug(`[DownloadService] 文件已在文件管理器中显示: ${downloadId}`);
+    return {
+      success: true,
+      downloadId: downloadId
+    };
+  } catch (error) {
+    logger.error(`[DownloadService] 显示文件失败 [${downloadId}]:`, error);
+    return {
+      success: false,
+      error: error.message || '无法在文件管理器中显示文件',
+      downloadId: downloadId
+    };
+  }
+}
+
+
+
+/**
+ * 打开下载文件夹（显示下载目录）
+ * @returns {Promise<Object>} 操作结果
+ */
+async function openDownloadsFolder() {
+  try {
+    logger.debug(`[DownloadService] 打开下载文件夹`);
+
+    // 获取最近的下载项来定位下载文件夹
+    const recentDownloads = await chrome.downloads.search({
+      limit: 1,
+      orderBy: ['-startTime']
+    });
+
+    if (recentDownloads.length > 0) {
+      // 使用最近的下载项来显示下载文件夹
+      await chrome.downloads.show(recentDownloads[0].id);
+      return {
+        success: true,
+        message: '已打开下载文件夹'
+      };
+    } else {
+      // 如果没有下载历史，打开Chrome下载页面
+      throw new Error('没有下载历史记录');
+    }
+  } catch (error) {
+    logger.error(`[DownloadService] 打开下载文件夹失败:`, error);
+    // 降级方案：打开Chrome下载页面
+    try {
+      await chrome.tabs.create({ url: 'chrome://downloads/' });
+      return {
+        success: true,
+        message: '已打开Chrome下载页面，请手动查找文件'
+      };
+    } catch (tabError) {
+      return {
+        success: false,
+        error: '无法打开下载文件夹或下载页面'
+      };
+    }
+  }
+}
+
 export const downloadService = {
   downloadFile,
   getDownloadStatus,
-  cancelDownload
-}; 
+  cancelDownload,
+  showDownloadInFolder,
+  openDownloadsFolder
+};

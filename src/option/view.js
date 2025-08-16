@@ -27,6 +27,15 @@ export class View {
     
     // --- Summarization settings ---
     // Note: summarize-prompt does not exist in the HTML, so related properties are removed.
+
+    // --- Classification Management ---
+    this.classificationContainer = document.getElementById('classification-standards-container');
+    this.addClassificationButton = document.getElementById('add-classification-standard');
+
+    console.log('[VIEW] Classification elements:', {
+      container: this.classificationContainer,
+      button: this.addClassificationButton
+    });
   }
 
   // --- Modal Helpers ---
@@ -179,18 +188,74 @@ export class View {
       });
     }
   }
-  
+
   bindModelAction(handler) {
     if (this.modelSettingsContainer) {
       this.modelSettingsContainer.addEventListener('click', (event) => {
         const button = event.target.closest('button');
         if (!button || button.dataset.index === undefined) return;
-    
+
         const action = button.dataset.action;
         const index = parseInt(button.dataset.index, 10);
-    
+
         if (action) {
           handler(action, index);
+        }
+      });
+    }
+  }
+
+  // --- Classification Management Event Binding ---
+
+  bindAddClassificationStandard(handler) {
+    console.log('[VIEW] bindAddClassificationStandard called, button:', this.addClassificationButton);
+    if (this.addClassificationButton) {
+      this.addClassificationButton.addEventListener('click', () => {
+        console.log('[VIEW] Add classification standard button clicked');
+        handler();
+      });
+      console.log('[VIEW] Event listener added to add classification button');
+    } else {
+      console.error('[VIEW] Add classification button not found!');
+    }
+  }
+
+  bindClassificationAction(handler) {
+    if (this.classificationContainer) {
+      this.classificationContainer.addEventListener('click', (event) => {
+        const button = event.target.closest('button');
+        if (!button || !button.dataset.action) return;
+
+        const action = button.dataset.action;
+        const standardId = button.dataset.standardId;
+
+        if (action && standardId) {
+          handler(action, standardId);
+        }
+      });
+    }
+  }
+
+  bindClassificationChange(handler) {
+    if (this.classificationContainer) {
+      this.classificationContainer.addEventListener('input', (event) => {
+        const target = event.target;
+        if (target.tagName === 'TEXTAREA' && target.dataset.standardId) {
+          const standardId = target.dataset.standardId;
+          const field = target.dataset.field;
+          const value = target.value;
+
+          if (field && standardId) {
+            handler(standardId, field, value);
+          }
+        } else if (target.tagName === 'INPUT' && target.dataset.standardId) {
+          const standardId = target.dataset.standardId;
+          const field = target.dataset.field;
+          const value = target.value;
+
+          if (field && standardId) {
+            handler(standardId, field, value);
+          }
         }
       });
     }
@@ -202,6 +267,7 @@ export class View {
   render(config) {
     this.renderModelSettings(config.aiModels);
     this.renderDefaultModelSelector(config.aiModels, config.selectedAiModel);
+    this.renderClassificationStandards(config.classificationStandards);
     // Removed renderPromptSettings call as the element doesn't exist
   }
 
@@ -342,4 +408,57 @@ export class View {
   showAlert(message) {
     alert(message);
   }
-} 
+
+  // --- Classification Standards Rendering ---
+
+  renderClassificationStandards(standards) {
+    if (!this.classificationContainer) return;
+    this.classificationContainer.innerHTML = '';
+    if (!standards) return;
+
+    standards.forEach((standard) => {
+      const standardElement = this.createClassificationStandardElement(standard);
+      this.classificationContainer.appendChild(standardElement);
+    });
+  }
+
+  createClassificationStandardElement(standard) {
+    const element = document.createElement('div');
+    element.className = 'classification-standard-card';
+    element.innerHTML = `
+      <div class="classification-standard-header">
+        <div>
+          <span class="classification-standard-title">${standard.title}</span>
+          ${standard.isCustom ? '<span class="classification-standard-badge">自定义</span>' : '<span class="classification-standard-badge">系统</span>'}
+        </div>
+        <div class="classification-standard-actions">
+          ${standard.isCustom ? `<button data-action="delete" data-standard-id="${standard.id}" class="btn-danger">删除</button>` : ''}
+        </div>
+      </div>
+      <div class="classification-prompt">
+        <label>分类提示词:</label>
+        <textarea
+          data-standard-id="${standard.id}"
+          data-field="prompt"
+          ${!standard.isCustom ? 'readonly' : ''}
+          placeholder="请输入分类提示词..."
+        >${standard.prompt || ''}</textarea>
+      </div>
+    `;
+    return element;
+  }
+
+  // 添加新分类标准的对话框
+  showAddClassificationStandardDialog() {
+    console.log('[VIEW] showAddClassificationStandardDialog called');
+    const title = prompt('请输入分类标准标题:');
+    console.log('[VIEW] Title entered:', title);
+    if (!title) return null;
+
+    const promptText = prompt('请输入分类提示词:');
+    console.log('[VIEW] Prompt entered:', promptText);
+    if (!promptText) return null;
+
+    return { title, prompt: promptText };
+  }
+}

@@ -116,6 +116,11 @@ export class MessageService {
     // Organize Service Actions
     handlers.set(MessageActions.ORGANIZE_PAPERS, this.handleOrganizePapers.bind(this));
 
+    // System Actions
+    handlers.set(MessageActions.OPEN_SETTINGS_SECTION, this.handleOpenSettingsSection.bind(this));
+    handlers.set(MessageActions.OPEN_WORKING_DIRECTORY, this.handleOpenWorkingDirectory.bind(this));
+    handlers.set(MessageActions.SHOW_DOWNLOAD_IN_FOLDER, this.handleShowDownloadInFolder.bind(this));
+
     // Setup the single listener with the handler map
     addRuntimeMessageListener(handlers);
 
@@ -128,7 +133,28 @@ export class MessageService {
    */
   async handleGetPaperBoxData(data, sender, sendResponse) {
     try {
+      // 确保服务已初始化
+      if (!this.isInitialized) {
+        logger.warn('[MessageService] Service not initialized yet, waiting...');
+        // 等待初始化完成，最多等待5秒
+        let waitTime = 0;
+        const maxWait = 5000;
+        const checkInterval = 100;
+
+        while (!this.isInitialized && waitTime < maxWait) {
+          await new Promise(resolve => setTimeout(resolve, checkInterval));
+          waitTime += checkInterval;
+        }
+
+        if (!this.isInitialized) {
+          logger.error('[MessageService] Service initialization timeout');
+          sendResponse({ success: false, error: 'Service not ready' });
+          return true;
+        }
+      }
+
       const papers = paperBoxManager.getPaperBox();
+      logger.log(`[MessageService] Returning paper box data with ${Object.keys(papers).length} papers`);
       sendResponse({ success: true, papers });
     } catch (error) {
       logger.error('[MessageService] Failed to get paper box data:', error);
@@ -438,11 +464,119 @@ export class MessageService {
       logger.log('[MessageService] 收到整理论文请求:', data);
       const { papers, options } = data || {};
 
+      // 详细记录接收到的选项数据
+      logger.log('[MessageService] 接收到的选项详情:', {
+        downloadPdf: options?.downloadPdf,
+        translation: options?.translation,
+        classification: options?.classification,
+        selectedPapers: options?.selectedPapers,
+        totalPapers: options?.totalPapers
+      });
+
       const result = await paperOrganizationService.organizePapers(papers, options);
       sendResponse({ success: result, message: result ? '整理论文任务已提交' : '整理论文任务提交失败' });
     } catch (error) {
       logger.error('[MessageService] 处理整理论文消息失败:', error);
       sendResponse({ success: false, error: error.message || '整理论文失败' });
+    }
+    return true;
+  }
+
+
+
+
+
+  /**
+   * 处理打开设置页面特定部分消息
+   */
+  async handleOpenSettingsSection(data, sender, sendResponse) {
+    try {
+      const { section } = data || {};
+      // 打开设置页面并跳转到指定部分
+      const url = chrome.runtime.getURL('settings.html') + (section ? `#${section}` : '');
+      await chrome.tabs.create({ url });
+      sendResponse({ success: true });
+    } catch (error) {
+      logger.error('[MessageService] 打开设置页面失败:', error);
+      sendResponse({ success: false, error: error.message });
+    }
+    return true;
+  }
+
+  /**
+   * 处理打开工作目录消息
+   * 使用 chrome.downloads.search() + show() 方案直接定位到目录
+   */
+  async handleOpenWorkingDirectory(data, sender, sendResponse) {
+    try {
+      const { workingDirectory, taskDirectory } = data || {};
+      logger.log('[MessageService] 请求打开工作目录:', { workingDirectory, taskDirectory });
+
+      // 导入文件管理服务
+      const { fileManagementService } = await import('../../service/fileManagementService.js');
+
+      let result;
+      // 优先尝试显示工作目录（LitHelperData），而不是具体任务目录
+      // 这样用户可以看到整个工作目录的结构
+      result = await fileManagementService.showWorkingDirectory();
+
+      // 如果工作目录显示失败，且有任务目录，尝试显示任务目录
+      if (!result.success && taskDirectory) {
+        logger.log('[MessageService] 工作目录显示失败，尝试显示任务目录');
+        result = await fileManagementService.showTaskDirectory(taskDirectory);
+      }
+
+      if (result.success) {
+        sendResponse({
+          success: true,
+          message: result.message,
+          filename: result.filename,
+          downloadId: result.downloadId
+        });
+      } else {
+        // 如果失败，提供降级方案
+        sendResponse({
+          success: false,
+          error: result.error,
+          message: `无法定位到目录，建议手动在下载文件夹中查找 ${workingDirectory || 'LitHelperData'} 目录`
+        });
+      }
+    } catch (error) {
+      logger.error('[MessageService] 打开工作目录失败:', error);
+      sendResponse({
+        success: false,
+        error: error.message,
+        message: '无法打开工作目录，请手动在下载文件夹中查找相关文件'
+      });
+    }
+    return true;
+  }
+
+  /**
+   * 处理在文件管理器中显示下载文件消息
+   */
+  async handleShowDownloadInFolder(data, sender, sendResponse) {
+    try {
+      const { downloadId } = data || {};
+      logger.log('[MessageService] 请求显示下载文件:', downloadId);
+
+      if (!downloadId) {
+        throw new Error('缺少下载ID');
+      }
+
+      // 导入downloadService
+      const { downloadService } = await import('../util/downloadService.js');
+
+      // 在文件管理器中显示文件
+      const result = await downloadService.showDownloadInFolder(downloadId);
+
+      sendResponse(result);
+    } catch (error) {
+      logger.error('[MessageService] 显示下载文件失败:', error);
+      sendResponse({
+        success: false,
+        error: error.message
+      });
     }
     return true;
   }

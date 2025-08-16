@@ -5,6 +5,9 @@
  */
 
 import { logger } from '../../../util/logger.js';
+import { sendMessageToBackend, MessageActions } from '../../../util/message.js';
+import { fileManagementService } from '../../../service/fileManagementService.js';
+import { configService } from '../../../service/configService.js';
 
 // 正确的路径，与manifest.json中的web_accessible_resources配置一致
 const DELETE_ICON_PATH = 'icons/delete-icon.svg';
@@ -19,9 +22,24 @@ class PopupWindow {
     this.isVisible = false;
     this.selectedOptions = {
       downloadPdf: false,
-      aiTranslate: false,
-      generateMindMap: false
+      translation: {
+        enabled: false,
+        targetLanguage: 'zh-CN'
+      },
+      classification: {
+        enabled: false,
+        selectedStandard: 'research_method'
+      },
+      storage: {
+        workingDirectory: fileManagementService.getWorkingDirectoryName(), // 工作目录路径（固定为LitHelperData）
+        taskDirectory: '',    // 任务目录名
+        fullPath: ''          // 完整路径预览
+      }
     };
+
+    // 缓存配置数据
+    this.translationLanguages = [];
+    this.classificationStandards = [];
     logger.log('PopupWindow constructor');
   }
 
@@ -55,6 +73,9 @@ class PopupWindow {
       // 加载样式
       this._loadStyles();
 
+      // 加载配置数据
+      await this._loadConfigData();
+
       // 创建元素
       this.element = this.createElement(options);
       document.body.appendChild(this.element);
@@ -65,6 +86,40 @@ class PopupWindow {
     } catch (error) {
       logger.error('Failed to initialize popup window:', error);
       throw error;
+    }
+  }
+
+  /**
+   * 加载配置数据
+   * @private
+   */
+  async _loadConfigData() {
+    try {
+      logger.log('[POPUP] 开始加载配置数据...');
+
+      // 直接从 configService 加载数据
+      this.translationLanguages = await configService.getTranslationLanguages();
+      logger.log('[POPUP] 翻译语言加载完成:', this.translationLanguages);
+
+      this.classificationStandards = await configService.getClassificationStandards();
+      logger.log('[POPUP] 分类标准加载完成:', this.classificationStandards);
+
+      // 加载默认配置
+      const defaultConfig = await configService.getOrganizeDefaults();
+      logger.log('[POPUP] 默认配置加载完成:', defaultConfig);
+
+      this.selectedOptions = { ...this.selectedOptions, ...defaultConfig };
+
+      logger.log('[POPUP] 配置数据加载完成', {
+        languages: this.translationLanguages.length,
+        standards: this.classificationStandards.length,
+        options: this.selectedOptions
+      });
+    } catch (error) {
+      logger.error('[POPUP] 加载配置数据失败:', error);
+      // 使用默认值继续
+      this.translationLanguages = [];
+      this.classificationStandards = [];
     }
   }
 
@@ -158,42 +213,23 @@ class PopupWindow {
     const actionButtons = document.createElement('div');
     actionButtons.className = 'rs-action-buttons';
 
-    // Create toggle options
-    const options = [
-      { id: 'downloadPdf', label: '下载PDF' },
-      { id: 'aiTranslate', label: 'AI翻译' },
-      { id: 'generateMindMap', label: '生成思维导图' }
-    ];
+    // 1. PDF下载开关
+    const pdfOption = this._createToggleOption('downloadPdf', 'PDF下载', this.selectedOptions.downloadPdf);
+    actionButtons.appendChild(pdfOption);
 
-    options.forEach(option => {
-      const toggleOption = document.createElement('div');
-      toggleOption.className = 'rs-toggle-option';
+    // 2. 翻译功能
+    const translationSection = this._createTranslationSection();
+    actionButtons.appendChild(translationSection);
 
-      const label = document.createElement('label');
-      label.textContent = option.label;
-      toggleOption.appendChild(label);
+    // 3. 分类功能
+    const classificationSection = this._createClassificationSection();
+    actionButtons.appendChild(classificationSection);
 
-      const toggleSwitch = document.createElement('label');
-      toggleSwitch.className = 'rs-toggle-switch';
+    // 4. 存储路径设置
+    const storageSection = this._createStorageSection();
+    actionButtons.appendChild(storageSection);
 
-      const checkbox = document.createElement('input');
-      checkbox.type = 'checkbox';
-      checkbox.id = `rs-${option.id}`;
-      checkbox.addEventListener('change', (e) => {
-        this.selectedOptions[option.id] = e.target.checked;
-      });
-
-      const slider = document.createElement('span');
-      slider.className = 'rs-toggle-slider';
-
-      toggleSwitch.appendChild(checkbox);
-      toggleSwitch.appendChild(slider);
-
-      toggleOption.appendChild(toggleSwitch);
-      actionButtons.appendChild(toggleOption);
-    });
-
-    // Create "开始整理" button
+    // 5. 开始整理按钮
     const startOrganizeButton = document.createElement('button');
     startOrganizeButton.className = 'rs-start-organize-btn';
     startOrganizeButton.textContent = '开始整理';
@@ -404,6 +440,9 @@ class PopupWindow {
           logger.error('[POPUP] 渲染论文项失败:', err, paper);
         }
       });
+
+      // 论文列表更新后，检查是否需要自动生成任务目录名
+      this._onPaperListUpdated();
     } catch (error) {
       logger.error('[POPUP] updatePaperList 执行失败:', error);
     }
@@ -444,6 +483,417 @@ class PopupWindow {
    */
   getSelectedOptions() {
     return this.selectedOptions;
+  }
+
+  // --- 辅助方法：创建UI组件 ---
+
+  /**
+   * 创建开关选项
+   * @param {string} id 选项ID
+   * @param {string} label 标签文本
+   * @param {boolean} checked 是否选中
+   * @returns {HTMLElement}
+   */
+  _createToggleOption(id, label, checked = false) {
+    const toggleOption = document.createElement('div');
+    toggleOption.className = 'rs-toggle-option';
+
+    const labelElement = document.createElement('label');
+    labelElement.textContent = label;
+    toggleOption.appendChild(labelElement);
+
+    const toggleSwitch = document.createElement('label');
+    toggleSwitch.className = 'rs-toggle-switch';
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.id = `rs-${id}`;
+    checkbox.checked = checked;
+    checkbox.addEventListener('change', (e) => {
+      if (id === 'downloadPdf') {
+        this.selectedOptions.downloadPdf = e.target.checked;
+      }
+    });
+
+    const slider = document.createElement('span');
+    slider.className = 'rs-toggle-slider';
+
+    toggleSwitch.appendChild(checkbox);
+    toggleSwitch.appendChild(slider);
+    toggleOption.appendChild(toggleSwitch);
+
+    return toggleOption;
+  }
+
+  /**
+   * 创建翻译功能区域
+   * @returns {HTMLElement}
+   */
+  _createTranslationSection() {
+    const section = document.createElement('div');
+    section.className = 'rs-config-section';
+
+    // 翻译开关
+    const toggleOption = document.createElement('div');
+    toggleOption.className = 'rs-toggle-option';
+
+    const label = document.createElement('label');
+    label.textContent = '翻译功能';
+    toggleOption.appendChild(label);
+
+    const toggleSwitch = document.createElement('label');
+    toggleSwitch.className = 'rs-toggle-switch';
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.id = 'rs-translation-enabled';
+    checkbox.checked = this.selectedOptions.translation.enabled;
+    checkbox.addEventListener('change', (e) => {
+      this.selectedOptions.translation.enabled = e.target.checked;
+      languageSelect.style.display = e.target.checked ? 'block' : 'none';
+    });
+
+    const slider = document.createElement('span');
+    slider.className = 'rs-toggle-slider';
+
+    toggleSwitch.appendChild(checkbox);
+    toggleSwitch.appendChild(slider);
+    toggleOption.appendChild(toggleSwitch);
+    section.appendChild(toggleOption);
+
+    // 语言选择下拉框
+    const languageSelect = document.createElement('select');
+    languageSelect.className = 'rs-language-select';
+    languageSelect.style.display = this.selectedOptions.translation.enabled ? 'block' : 'none';
+    languageSelect.style.marginTop = '8px';
+    languageSelect.style.width = '100%';
+
+    logger.log('[POPUP] 创建翻译语言下拉框，语言数量:', this.translationLanguages.length);
+
+    if (this.translationLanguages && this.translationLanguages.length > 0) {
+      this.translationLanguages.forEach(lang => {
+        const option = document.createElement('option');
+        option.value = lang.code;
+        option.textContent = lang.name;
+        option.selected = lang.code === this.selectedOptions.translation.targetLanguage;
+        languageSelect.appendChild(option);
+      });
+    } else {
+      // 添加默认选项
+      const defaultOption = document.createElement('option');
+      defaultOption.value = '';
+      defaultOption.textContent = '暂无可用语言';
+      languageSelect.appendChild(defaultOption);
+    }
+
+    languageSelect.addEventListener('change', (e) => {
+      this.selectedOptions.translation.targetLanguage = e.target.value;
+    });
+
+    section.appendChild(languageSelect);
+    return section;
+  }
+
+  /**
+   * 创建分类功能区域
+   * @returns {HTMLElement}
+   */
+  _createClassificationSection() {
+    const section = document.createElement('div');
+    section.className = 'rs-config-section';
+
+    // 分类开关
+    const toggleOption = document.createElement('div');
+    toggleOption.className = 'rs-toggle-option';
+
+    const label = document.createElement('label');
+    label.textContent = '分类功能';
+    toggleOption.appendChild(label);
+
+    const toggleSwitch = document.createElement('label');
+    toggleSwitch.className = 'rs-toggle-switch';
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.id = 'rs-classification-enabled';
+    checkbox.checked = this.selectedOptions.classification.enabled;
+    checkbox.addEventListener('change', (e) => {
+      this.selectedOptions.classification.enabled = e.target.checked;
+      standardSelect.style.display = e.target.checked ? 'block' : 'none';
+      editButton.style.display = e.target.checked ? 'block' : 'none';
+    });
+
+    const slider = document.createElement('span');
+    slider.className = 'rs-toggle-slider';
+
+    toggleSwitch.appendChild(checkbox);
+    toggleSwitch.appendChild(slider);
+    toggleOption.appendChild(toggleSwitch);
+    section.appendChild(toggleOption);
+
+    // 分类标准选择下拉框
+    const standardSelect = document.createElement('select');
+    standardSelect.className = 'rs-standard-select';
+    standardSelect.style.display = this.selectedOptions.classification.enabled ? 'block' : 'none';
+    standardSelect.style.marginTop = '8px';
+    standardSelect.style.width = '100%';
+
+    logger.log('[POPUP] 创建分类标准下拉框，标准数量:', this.classificationStandards.length);
+
+    if (this.classificationStandards && this.classificationStandards.length > 0) {
+      this.classificationStandards.forEach(standard => {
+        const option = document.createElement('option');
+        option.value = standard.id;
+        option.textContent = standard.title;
+        option.selected = standard.id === this.selectedOptions.classification.selectedStandard;
+        standardSelect.appendChild(option);
+      });
+    } else {
+      // 添加默认选项
+      const defaultOption = document.createElement('option');
+      defaultOption.value = '';
+      defaultOption.textContent = '暂无可用分类标准';
+      standardSelect.appendChild(defaultOption);
+    }
+
+    standardSelect.addEventListener('change', (e) => {
+      this.selectedOptions.classification.selectedStandard = e.target.value;
+    });
+
+    section.appendChild(standardSelect);
+
+    // 编辑prompt按钮
+    const editButton = document.createElement('button');
+    editButton.className = 'rs-edit-prompt-btn';
+    editButton.textContent = '编辑Prompt';
+    editButton.style.display = this.selectedOptions.classification.enabled ? 'block' : 'none';
+    editButton.style.marginTop = '8px';
+    editButton.style.width = '100%';
+    editButton.style.padding = '6px';
+    editButton.style.fontSize = '12px';
+    editButton.style.backgroundColor = '#f0f0f0';
+    editButton.style.border = '1px solid #ccc';
+    editButton.style.borderRadius = '4px';
+    editButton.style.cursor = 'pointer';
+
+    editButton.addEventListener('click', async () => {
+      try {
+        await sendMessageToBackend(MessageActions.OPEN_SETTINGS_SECTION, { section: 'classification' });
+      } catch (error) {
+        logger.error('[POPUP] 打开设置页面失败:', error);
+      }
+    });
+
+    section.appendChild(editButton);
+    return section;
+  }
+
+  /**
+   * 创建存储路径设置区域
+   * @returns {HTMLElement}
+   */
+  _createStorageSection() {
+    const section = document.createElement('div');
+    section.className = 'rs-storage-section';
+
+    // 标题
+    const title = document.createElement('div');
+    title.className = 'rs-storage-title';
+    title.textContent = '📁 结果存储路径';
+    section.appendChild(title);
+
+    // 工作目录显示（固定为LitHelperData）
+    const workingDirContainer = document.createElement('div');
+    workingDirContainer.className = 'rs-storage-container';
+
+    const workingDirLabel = document.createElement('div');
+    workingDirLabel.className = 'rs-storage-label';
+    workingDirLabel.textContent = '工作目录:';
+    workingDirContainer.appendChild(workingDirLabel);
+
+    const workingDirRow = document.createElement('div');
+    workingDirRow.className = 'rs-storage-row';
+
+    const workingDirInput = document.createElement('input');
+    workingDirInput.type = 'text';
+    workingDirInput.className = 'rs-working-dir-input rs-readonly';
+    workingDirInput.value = this.selectedOptions.storage.workingDirectory;
+    workingDirInput.readOnly = true; // 只读显示
+    workingDirInput.title = '工作目录已固定为 LitHelperData';
+
+    const folderButton = document.createElement('button');
+    folderButton.className = 'rs-folder-btn';
+    folderButton.textContent = '📁';
+    folderButton.title = '打开工作目录';
+
+    folderButton.addEventListener('click', () => {
+      this._openWorkingDirectory();
+    });
+
+    workingDirRow.appendChild(workingDirInput);
+    workingDirRow.appendChild(folderButton);
+    workingDirContainer.appendChild(workingDirRow);
+    section.appendChild(workingDirContainer);
+
+    // 任务目录设置
+    const taskDirContainer = document.createElement('div');
+    taskDirContainer.className = 'rs-storage-container';
+
+    const taskDirLabel = document.createElement('div');
+    taskDirLabel.className = 'rs-storage-label';
+    taskDirLabel.textContent = '任务目录:';
+    taskDirContainer.appendChild(taskDirLabel);
+
+    const taskDirRow = document.createElement('div');
+    taskDirRow.className = 'rs-storage-row';
+
+    const taskDirInput = document.createElement('input');
+    taskDirInput.type = 'text';
+    taskDirInput.className = 'rs-task-dir-input';
+    taskDirInput.placeholder = '任务目录名...';
+    taskDirInput.value = this.selectedOptions.storage.taskDirectory;
+
+    const autoGenButton = document.createElement('button');
+    autoGenButton.className = 'rs-auto-gen-btn';
+    autoGenButton.textContent = '🔄 自动';
+
+    autoGenButton.addEventListener('click', () => {
+      this._generateTaskDirectoryName();
+    });
+
+    taskDirInput.addEventListener('input', (e) => {
+      this.selectedOptions.storage.taskDirectory = e.target.value;
+      this._updateFullPath();
+    });
+
+    taskDirRow.appendChild(taskDirInput);
+    taskDirRow.appendChild(autoGenButton);
+    taskDirContainer.appendChild(taskDirRow);
+    section.appendChild(taskDirContainer);
+
+    // 完整路径预览
+    const previewContainer = document.createElement('div');
+    previewContainer.className = 'rs-path-preview-container';
+
+    const previewLabel = document.createElement('div');
+    previewLabel.className = 'rs-storage-label';
+    previewLabel.textContent = '完整路径预览:';
+    previewContainer.appendChild(previewLabel);
+
+    const previewPath = document.createElement('div');
+    previewPath.className = 'rs-path-preview';
+    previewPath.textContent = this.selectedOptions.storage.fullPath || '请先选择工作目录';
+
+    previewContainer.appendChild(previewPath);
+    section.appendChild(previewContainer);
+
+    // 保存引用以便后续更新
+    this.workingDirInput = workingDirInput;
+    this.taskDirInput = taskDirInput;
+    this.pathPreview = previewPath;
+
+    return section;
+  }
+
+
+
+  /**
+   * 生成任务目录名（基于第一篇论文标题的前10个字符）
+   */
+  _generateTaskDirectoryName() {
+    try {
+      // 获取当前论文列表中的第一篇论文
+      const paperItems = this.paperList?.querySelectorAll('.rs-paper-item');
+      if (paperItems && paperItems.length > 0) {
+        const firstPaperTitle = paperItems[0].querySelector('.rs-paper-title')?.textContent;
+        if (firstPaperTitle) {
+          // 取前10个字符，并清理不适合作为文件夹名的字符
+          let dirName = firstPaperTitle.substring(0, 10)
+            .replace(/[<>:"/\\|?*]/g, '_') // 替换不合法的文件名字符
+            .replace(/\s+/g, '_') // 替换空格为下划线
+            .replace(/_{2,}/g, '_') // 合并多个下划线
+            .replace(/^_|_$/g, ''); // 移除开头和结尾的下划线
+
+          if (dirName) {
+            this.selectedOptions.storage.taskDirectory = dirName;
+            this.taskDirInput.value = dirName;
+            this._updateFullPath();
+            logger.log('[POPUP] 自动生成任务目录名:', dirName);
+            return;
+          }
+        }
+      }
+
+      // 如果没有论文或无法获取标题，使用默认名称
+      const defaultName = `task_${new Date().toISOString().slice(0, 10)}`;
+      this.selectedOptions.storage.taskDirectory = defaultName;
+      this.taskDirInput.value = defaultName;
+      this._updateFullPath();
+      logger.log('[POPUP] 使用默认任务目录名:', defaultName);
+    } catch (error) {
+      logger.error('[POPUP] 生成任务目录名失败:', error);
+    }
+  }
+
+  /**
+   * 更新完整路径预览
+   */
+  _updateFullPath() {
+    const taskDir = this.selectedOptions.storage.taskDirectory;
+
+    if (taskDir) {
+      try {
+        // 使用文件管理服务构建完整路径
+        const fullPath = fileManagementService.buildFullPath(taskDir);
+        this.selectedOptions.storage.fullPath = fullPath;
+        this.pathPreview.textContent = fullPath;
+      } catch (error) {
+        logger.error('[POPUP] 构建路径失败:', error);
+        this.pathPreview.textContent = `${this.selectedOptions.storage.workingDirectory}/[任务目录名无效]`;
+      }
+    } else {
+      this.pathPreview.textContent = `${this.selectedOptions.storage.workingDirectory}/[请输入任务目录名]`;
+    }
+  }
+
+  /**
+   * 打开工作目录
+   * 使用 chrome.downloads.search() + show() 方案直接定位到目录
+   * 注意：不弹出任何提示窗，静默处理
+   */
+  _openWorkingDirectory() {
+    try {
+      const workingDirectory = this.selectedOptions.storage.workingDirectory;
+      const taskDirectory = this.selectedOptions.storage.taskDirectory;
+
+      logger.log('[POPUP] 请求打开工作目录:', { workingDirectory, taskDirectory });
+
+      // 发送消息到后台脚本，请求打开工作目录（静默处理结果）
+      sendMessageToBackend(MessageActions.OPEN_WORKING_DIRECTORY, {
+        workingDirectory,
+        taskDirectory // 传递任务目录，优先显示具体任务目录（后台会优先尝试工作目录）
+      }).then(response => {
+        if (response && response.success) {
+          logger.log('[POPUP] 文件管理器已打开');
+        } else {
+          logger.warn('[POPUP] 打开工作目录失败:', response?.error || response);
+        }
+      }).catch(error => {
+        logger.error('[POPUP] 打开工作目录时发生错误:', error);
+      });
+    } catch (error) {
+      logger.error('[POPUP] 打开工作目录失败:', error);
+    }
+  }
+
+
+  /**
+   * 当论文列表更新时，如果任务目录为空，自动生成目录名
+   */
+  _onPaperListUpdated() {
+    if (!this.selectedOptions.storage.taskDirectory) {
+      this._generateTaskDirectoryName();
+    }
   }
 }
 

@@ -20,10 +20,16 @@ async function initialize() {
     await messageService.initialize();
 
     contextMenuService.initializeContextMenus();
-
-    logger.log('Background service initialized successfully.');
   } catch (error) {
     logger.error('Failed to initialize background service:', error);
+    // 即使初始化失败，也要确保基本服务可用
+    try {
+      if (!messageService.isInitialized) {
+        await messageService.initialize();
+      }
+    } catch (fallbackError) {
+      logger.error('Fallback initialization also failed:', fallbackError);
+    }
   }
 }
 

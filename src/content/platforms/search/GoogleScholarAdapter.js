@@ -294,8 +294,8 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
             return false;
           } else {
             logger.log(`[GoogleScholarAdapter] 成功提取到 ${papers.length} 篇论文，准备注入UI组件`);
-            // 提取成功，发送论文HTML元素列表到后台服务
-            await this.sendPaperElementsToMetadataService(papers);
+            // 注释：移除自动发送论文到元数据服务的逻辑，改为在用户主动整理时触发
+            // await this.sendPaperElementsToMetadataService(papers);
             // 继续执行UI注入逻辑
           }
         } catch (error) {

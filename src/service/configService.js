@@ -68,7 +68,53 @@ const defaultConfig = {
   ],
   summarizePrompt: "请总结以下论文，并以markdown格式呈现，要求包含'论文题目'，'研究背景'，'研究方法'，'研究结论'等部分。",
   paperListPageSize: 10,
-  language: "zh"
+  language: "zh",
+
+  // 翻译语言配置
+  translationLanguages: [
+    { code: 'zh-CN', name: '简体中文' },
+    { code: 'zh-TW', name: '繁體中文' },
+    { code: 'en', name: 'English' },
+    { code: 'ja', name: '日本語' },
+    { code: 'ko', name: '한국어' },
+    { code: 'fr', name: 'Français' },
+    { code: 'de', name: 'Deutsch' },
+    { code: 'es', name: 'Español' },
+    { code: 'ru', name: 'Русский' },
+    { code: 'ar', name: 'العربية' }
+  ],
+
+  // 分类标准配置
+  classificationStandards: [
+    {
+      id: 'research_method',
+      title: '研究方法分类',
+      prompt: '请根据研究方法对以下论文进行分类，可选类别包括：实验研究、理论分析、文献综述、案例研究、调查研究等。请说明分类依据。'
+    },
+    {
+      id: 'research_field',
+      title: '研究领域分类',
+      prompt: '请根据研究领域对以下论文进行分类，如：计算机科学、生物医学、物理学、化学、工程学、社会科学等。请说明分类依据。'
+    },
+    {
+      id: 'research_impact',
+      title: '研究影响力分类',
+      prompt: '请根据研究的潜在影响力对以下论文进行分类：高影响力（突破性发现）、中等影响力（重要进展）、一般影响力（常规研究）。请说明分类依据。'
+    }
+  ],
+
+  // 整理论文的默认配置
+  organizeDefaults: {
+    downloadPdf: false,
+    translation: {
+      enabled: false,
+      targetLanguage: 'zh-CN'
+    },
+    classification: {
+      enabled: false,
+      selectedStandard: 'research_method'
+    }
+  }
 };
 
 const CONFIG_KEY = 'extension_config';
@@ -117,7 +163,10 @@ class ConfigService {
           await this._save();
         } else {
           logger.log('[ConfigService] 从存储中加载配置成功。');
-          this.currentConfig = storedConfig;
+          // 合并存储的配置和默认配置，确保新添加的配置项被包含
+          this.currentConfig = this._mergeConfigs(defaultConfig, storedConfig);
+          // 保存合并后的配置，确保新配置项被持久化
+          await this._save();
         }
       } catch (error) {
         logger.error('[ConfigService] 初始化配置失败，将使用默认配置:', error);
@@ -263,6 +312,192 @@ class ConfigService {
     }
 
     return modelConfig;
+  }
+
+  // --- 翻译语言配置管理 ---
+
+  /**
+   * 获取所有翻译语言选项
+   * @returns {Promise<Array>} 翻译语言列表
+   */
+  async getTranslationLanguages() {
+    const config = await this.getConfig();
+    return config.translationLanguages || [];
+  }
+
+  /**
+   * 根据语言代码获取语言名称
+   * @param {string} languageCode 语言代码
+   * @returns {Promise<string>} 语言名称
+   */
+  async getLanguageName(languageCode) {
+    const languages = await this.getTranslationLanguages();
+    const language = languages.find(lang => lang.code === languageCode);
+    return language ? language.name : languageCode;
+  }
+
+  // --- 分类标准配置管理 ---
+
+  /**
+   * 获取所有分类标准
+   * @returns {Promise<Array>} 分类标准列表
+   */
+  async getClassificationStandards() {
+    const config = await this.getConfig();
+    return config.classificationStandards || [];
+  }
+
+  /**
+   * 根据ID获取分类标准
+   * @param {string} standardId 分类标准ID
+   * @returns {Promise<Object|null>} 分类标准对象
+   */
+  async getClassificationStandard(standardId) {
+    const standards = await this.getClassificationStandards();
+    return standards.find(standard => standard.id === standardId) || null;
+  }
+
+  /**
+   * 添加新的分类标准
+   * @param {Object} standard 分类标准对象 {title, prompt}
+   * @returns {Promise<string>} 新创建的分类标准ID
+   */
+  async addClassificationStandard(standard) {
+    const config = await this.getConfig();
+    if (!config.classificationStandards) {
+      config.classificationStandards = [];
+    }
+
+    // 生成唯一ID
+    const id = `custom_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const newStandard = {
+      id,
+      title: standard.title,
+      prompt: standard.prompt,
+      isCustom: true
+    };
+
+    config.classificationStandards.push(newStandard);
+    await this._save();
+    return id;
+  }
+
+  /**
+   * 更新分类标准
+   * @param {string} standardId 分类标准ID
+   * @param {Object} updates 更新的字段
+   * @returns {Promise<boolean>} 是否更新成功
+   */
+  async updateClassificationStandard(standardId, updates) {
+    const config = await this.getConfig();
+    const standards = config.classificationStandards || [];
+    const index = standards.findIndex(standard => standard.id === standardId);
+
+    if (index === -1) {
+      return false;
+    }
+
+    // 只允许更新 title 和 prompt
+    if (updates.title !== undefined) {
+      standards[index].title = updates.title;
+    }
+    if (updates.prompt !== undefined) {
+      standards[index].prompt = updates.prompt;
+    }
+
+    await this._save();
+    return true;
+  }
+
+  /**
+   * 删除分类标准（只能删除自定义的）
+   * @param {string} standardId 分类标准ID
+   * @returns {Promise<boolean>} 是否删除成功
+   */
+  async deleteClassificationStandard(standardId) {
+    const config = await this.getConfig();
+    const standards = config.classificationStandards || [];
+    const index = standards.findIndex(standard => standard.id === standardId);
+
+    if (index === -1) {
+      return false;
+    }
+
+    // 只允许删除自定义的分类标准
+    if (!standards[index].isCustom) {
+      throw new Error('不能删除系统预设的分类标准');
+    }
+
+    standards.splice(index, 1);
+    await this._save();
+    return true;
+  }
+
+  // --- 整理论文默认配置管理 ---
+
+  /**
+   * 获取整理论文的默认配置
+   * @returns {Promise<Object>} 默认配置对象
+   */
+  async getOrganizeDefaults() {
+    const config = await this.getConfig();
+    return config.organizeDefaults || {
+      downloadPdf: false,
+      translation: {
+        enabled: false,
+        targetLanguage: 'zh-CN'
+      },
+      classification: {
+        enabled: false,
+        selectedStandard: 'research_method'
+      }
+    };
+  }
+
+  /**
+   * 更新整理论文的默认配置
+   * @param {Object} defaults 新的默认配置
+   * @returns {Promise<boolean>} 是否更新成功
+   */
+  async updateOrganizeDefaults(defaults) {
+    const config = await this.getConfig();
+    config.organizeDefaults = { ...config.organizeDefaults, ...defaults };
+    await this._save();
+    return true;
+  }
+
+  // --- 辅助方法 ---
+
+  /**
+   * 深度合并两个配置对象
+   * @param {Object} defaultConfig 默认配置
+   * @param {Object} storedConfig 存储的配置
+   * @returns {Object} 合并后的配置
+   * @private
+   */
+  _mergeConfigs(defaultConfig, storedConfig) {
+    const merged = this._deepClone(defaultConfig);
+
+    // 递归合并配置
+    const mergeRecursive = (target, source) => {
+      for (const key in source) {
+        if (source.hasOwnProperty(key)) {
+          if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+            // 如果是对象，递归合并
+            if (!target[key] || typeof target[key] !== 'object') {
+              target[key] = {};
+            }
+            mergeRecursive(target[key], source[key]);
+          } else {
+            // 直接赋值（包括数组和基本类型）
+            target[key] = source[key];
+          }
+        }
+      }
+    };
+
+    mergeRecursive(merged, storedConfig);
+    return merged;
   }
 }
 

@@ -12,6 +12,8 @@
   <div class="sidebar">
     <div class="nav-item active" data-section="ai-models">AI 模型</div>
     <div class="nav-item" data-section="summarization">摘要设置</div>
+    <div class="nav-item" data-section="classification">分类管理</div>
+    <div class="nav-item" data-section="tab-settings">标签页设置</div>
   </div>
   
   <!-- 右侧内容区 -->
@@ -80,7 +82,25 @@
         </div>
       </div>
     </div>
-    
+
+    <!-- 分类管理部分 -->
+    <div class="section" id="classification">
+      <header>
+        <h1>分类管理</h1>
+        <div class="description">管理论文分类标准和编辑分类提示词</div>
+      </header>
+
+      <!-- 添加新分类标准按钮 -->
+      <button id="add-classification-standard" class="btn">
+        <span>+ 添加分类标准</span>
+      </button>
+
+      <!-- 分类标准列表 -->
+      <div class="classification-standards" id="classification-standards-container">
+        <!-- 分类标准卡片将通过JS动态生成 -->
+      </div>
+    </div>
+
     <!-- 底部操作栏 -->
     <div class="action-bar">
       <button id="reset-defaults" class="btn btn-secondary">恢复默认设置</button>

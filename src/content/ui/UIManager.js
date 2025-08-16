@@ -11,6 +11,7 @@ import { storage } from '../../util/storage.js';
 import { Paper } from '../../model/Paper.js'; // Import Paper class
 import { logger } from '../../util/logger.js';
 import { MessageActions, sendMessageToBackend, addContentScriptMessageListener } from '../../util/message.js';
+import { PLATFORM_KEYS, PAGE_TYPE } from '../../constants.js';
 
 class UIManager {
   constructor() {
@@ -64,28 +65,63 @@ class UIManager {
   }
 
   /**
-   * 从后台脚本加载论文数据
+   * 从后台脚本加载论文数据（带重试机制）
    */
   async loadPapersFromBackground() {
-    return new Promise((resolve, reject) => {
-      logger.log("[UI_TRACE] loadPapersFromBackground: 开始向后台请求论文盒数据");
+    const maxRetries = 3;
+    const baseDelay = 1000; // 1秒基础延迟
 
-      // 添加超时处理
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        logger.log(`[UI_TRACE] loadPapersFromBackground: 第${attempt}次尝试获取论文盒数据`);
+
+        const result = await this._attemptLoadPapers(attempt);
+        if (result.success) {
+          logger.log(`[UI_TRACE] loadPapersFromBackground: 第${attempt}次尝试成功`);
+          return;
+        }
+
+        // 如果不是最后一次尝试，等待后重试
+        if (attempt < maxRetries) {
+          const delay = baseDelay * attempt; // 递增延迟
+          logger.log(`[UI_TRACE] loadPapersFromBackground: 第${attempt}次尝试失败，${delay}ms后重试`);
+          await this._delay(delay);
+        }
+      } catch (error) {
+        logger.error(`[UI_TRACE] loadPapersFromBackground: 第${attempt}次尝试异常:`, error);
+        if (attempt === maxRetries) {
+          logger.error('[UI_TRACE] loadPapersFromBackground: 所有重试都失败，使用空论文盒');
+          this.papers = new Map();
+        }
+      }
+    }
+  }
+
+  /**
+   * 单次尝试加载论文数据
+   * @param {number} attempt - 尝试次数
+   * @returns {Promise<{success: boolean}>}
+   * @private
+   */
+  async _attemptLoadPapers(attempt) {
+    return new Promise((resolve) => {
+      // 根据尝试次数调整超时时间
+      const timeout = Math.min(3000 + (attempt - 1) * 2000, 10000); // 3s, 5s, 7s，最大10s
+
       const timeoutId = setTimeout(() => {
-        logger.warn('[UI_TRACE] loadPapersFromBackground: 请求论文盒数据超时');
-        this.papers = new Map(); // 初始化为空Map
-        resolve(); // 继续执行后续流程
-      }, 3000); // 3秒超时
+        logger.warn(`[UI_TRACE] loadPapersFromBackground: 第${attempt}次请求超时(${timeout}ms)`);
+        this.papers = new Map();
+        resolve({ success: false, reason: 'timeout' });
+      }, timeout);
 
       sendMessageToBackend(MessageActions.GET_PAPER_BOX_DATA)
         .then(response => {
-          clearTimeout(timeoutId); // 清除超时
+          clearTimeout(timeoutId);
 
-          // 打印更多诊断信息
-          logger.log('[UI_TRACE] loadPapersFromBackground: 后台脚本响应:', response || '无响应');
+          logger.log(`[UI_TRACE] loadPapersFromBackground: 第${attempt}次请求响应:`, response || '无响应');
 
           if (response && response.success && response.papers) {
-            logger.log('[UI_TRACE] loadPapersFromBackground: 从后台脚本接收到论文盒数据:', response.papers);
+            logger.log('[UI_TRACE] loadPapersFromBackground: 成功获取论文盒数据:', response.papers);
 
             // 将普通对象转换为Paper实例
             const paperEntries = Object.entries(response.papers).map(([id, paperData]) => {
@@ -95,30 +131,77 @@ class UIManager {
 
             this.papers = new Map(paperEntries);
             logger.log(`[UI_TRACE] loadPapersFromBackground: 已加载 ${this.papers.size} 篇论文到论文盒`);
+
             if (this.papers.size > 0) {
               logger.log("[UI_TRACE] loadPapersFromBackground: 论文列表:", Array.from(this.papers.values()).map(p => p.title));
-              // 检查PDF链接恢复情况
               const papersWithPdf = Array.from(this.papers.values()).filter(p => p.hasPdf());
               logger.log(`[UI_TRACE] loadPapersFromBackground: 其中 ${papersWithPdf.length} 篇论文有PDF链接`);
             }
-            // 初始化完成后，更新悬浮按钮计数（如果已创建）
+
+            // 更新悬浮按钮计数
             if (this.floatingButton) {
               this.floatingButton.setPaperCount(this.papers.size);
               logger.log(`[UI_TRACE] loadPapersFromBackground: 已更新悬浮按钮论文数量: ${this.papers.size}`);
             }
+
+            resolve({ success: true });
           } else {
-            logger.warn('[UI_TRACE] loadPapersFromBackground: 后台脚本没有返回有效的论文盒数据');
-            this.papers = new Map(); // 初始化为空Map
+            logger.warn(`[UI_TRACE] loadPapersFromBackground: 第${attempt}次请求返回无效数据`);
+            this.papers = new Map();
+            resolve({ success: false, reason: 'invalid_response' });
           }
-          resolve();
         })
         .catch(error => {
-            clearTimeout(timeoutId);
-            logger.error('[UI_TRACE] loadPapersFromBackground: 获取论文盒数据失败:', error);
-            this.papers = new Map(); // 初始化为空Map
-            resolve();
+          clearTimeout(timeoutId);
+          logger.error(`[UI_TRACE] loadPapersFromBackground: 第${attempt}次请求失败:`, error);
+          this.papers = new Map();
+          resolve({ success: false, reason: 'request_failed', error });
         });
     });
+  }
+
+  /**
+   * 延迟工具方法
+   * @param {number} ms - 延迟毫秒数
+   * @returns {Promise<void>}
+   * @private
+   */
+  _delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
+   * 手动刷新论文盒数据
+   * 用于解决初始化失败的情况
+   * @returns {Promise<boolean>} 是否刷新成功
+   */
+  async refreshPaperBox() {
+    logger.log('[UI_TRACE] refreshPaperBox: 手动刷新论文盒数据');
+
+    try {
+      await this.loadPapersFromBackground();
+
+      // 更新UI
+      if (this.floatingButton) {
+        this.floatingButton.setPaperCount(this.papers.size);
+      }
+
+      if (this.popupWindow && this.popupWindow.isVisible) {
+        this.popupWindow.updatePaperList(
+          Array.from(this.papers.values()),
+          (paperId) => this.handleSummarizeClick(paperId),
+          (paperId) => this.handleDownloadClick(paperId),
+          (paperId, selected) => this.handlePaperSelection(paperId, selected),
+          (paperId) => this.handleRemovePaper(paperId)
+        );
+      }
+
+      logger.log(`[UI_TRACE] refreshPaperBox: 刷新成功，当前论文数量: ${this.papers.size}`);
+      return true;
+    } catch (error) {
+      logger.error('[UI_TRACE] refreshPaperBox: 刷新失败:', error);
+      return false;
+    }
   }
 
   /**
@@ -383,16 +466,29 @@ class UIManager {
       logger.log('[UI_TRACE] handleStartOrganize: PDF链接统计:', pdfStats);
 
       // 获取前台配置（从 PopupWindow 的选项）
+      // 保持与后台期望的格式一致
       const frontendConfig = {
         downloadPdf: selectedOptions.downloadPdf || false,
-        aiTranslate: selectedOptions.aiTranslate || false,
-        generateMindMap: selectedOptions.generateMindMap || false,
+        translation: {
+          enabled: selectedOptions.translation?.enabled || false,
+          targetLanguage: selectedOptions.translation?.targetLanguage || 'zh-CN'
+        },
+        classification: {
+          enabled: selectedOptions.classification?.enabled || false,
+          selectedStandard: selectedOptions.classification?.selectedStandard || 'research_method'
+        },
+        storage: {
+          workingDirectory: selectedOptions.storage?.workingDirectory || '',
+          taskDirectory: selectedOptions.storage?.taskDirectory || '',
+          fullPath: selectedOptions.storage?.fullPath || ''
+        },
         selectedPapers: Array.from(this.selectedPapers), // 当前选中的论文ID
         totalPapers: allPapers.length,
         timestamp: new Date().toISOString()
       };
 
-      logger.log('[UI_TRACE] handleStartOrganize: 前台配置:', frontendConfig);
+      logger.log('[UI_TRACE] handleStartOrganize: 原始选项:', selectedOptions);
+      logger.log('[UI_TRACE] handleStartOrganize: 转换后的前台配置:', frontendConfig);
 
       // 输出详细的论文信息到控制台
       console.group('📚 论文盒整理 - 详细信息');
@@ -418,9 +514,32 @@ class UIManager {
 
       console.groupEnd();
 
-      // 🚀 发送整理论文请求到后台
-      logger.log('[UI_TRACE] handleStartOrganize: 发送整理论文请求到后台');
+      // 🚀 第一步：先发送论文提取任务到MetadataService
+      logger.log('[UI_TRACE] handleStartOrganize: 先发送论文提取任务到MetadataService');
 
+      // 序列化论文数据，移除DOM元素引用（与GoogleScholarAdapter中的格式保持一致）
+      const serializedPapers = allPapers.map(paper => ({
+        ...paper,
+        html: paper.element?.outerHTML || '', // 保存HTML内容
+        element: undefined // 移除DOM元素引用，避免序列化问题
+      }));
+
+      // 发送论文提取任务，使用与GoogleScholarAdapter相同的参数格式
+      const metadataResponse = await sendMessageToBackend(MessageActions.PROCESS_PAPERS, {
+        sourceDomain: PLATFORM_KEYS.GOOGLE_SCHOLAR,
+        pageType: PAGE_TYPE.SEARCH_RESULTS,
+        papers: serializedPapers
+      });
+
+      if (!metadataResponse || !metadataResponse.success) {
+        logger.error('[UI_TRACE] handleStartOrganize: 论文提取任务提交失败:', metadataResponse?.error || '未知错误');
+        // TODO: 显示错误提示给用户
+        return;
+      }
+
+      logger.log('[UI_TRACE] handleStartOrganize: 论文提取任务已成功提交，现在发送整理论文请求');
+
+      // 🚀 第二步：发送整理论文请求到后台
       const response = await sendMessageToBackend(MessageActions.ORGANIZE_PAPERS, {
         papers: allPapers,
         options: frontendConfig

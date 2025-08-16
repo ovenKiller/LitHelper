@@ -50,6 +50,9 @@ export const MessageActions = {
 
   // Internal/System actions (内部/系统操作)
   OPEN_SETTINGS: 'openSettings',
+  OPEN_SETTINGS_SECTION: 'openSettingsSection',
+  OPEN_WORKING_DIRECTORY: 'openWorkingDirectory',
+  SHOW_DOWNLOAD_IN_FOLDER: 'showDownloadInFolder',
 
   // Notification actions (通知操作)
   SHOW_NOTIFICATION: 'showNotification',

@@ -706,4 +706,99 @@ input:checked + .slider:before {
   to {
     opacity: 1;
   }
-} 
+}
+
+/* 分类标准管理样式 */
+.classification-standards {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.classification-standard-card {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 20px;
+  background-color: #fafafa;
+}
+
+.classification-standard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.classification-standard-title {
+  font-size: 16px;
+  font-weight: 500;
+  color: #333;
+}
+
+.classification-standard-badge {
+  background-color: #e3f2fd;
+  color: #1976d2;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.classification-standard-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.classification-standard-actions button {
+  padding: 6px 12px;
+  font-size: 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background-color: white;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.classification-standard-actions button:hover {
+  background-color: #f5f5f5;
+}
+
+.classification-standard-actions .btn-danger {
+  border-color: #dc3545;
+  color: #dc3545;
+}
+
+.classification-standard-actions .btn-danger:hover {
+  background-color: #dc3545;
+  color: white;
+}
+
+.classification-prompt {
+  margin-top: 12px;
+}
+
+.classification-prompt label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: #555;
+}
+
+.classification-prompt textarea {
+  width: 100%;
+  min-height: 100px;
+  padding: 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 14px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.classification-prompt textarea:focus {
+  outline: none;
+  border-color: #4285f4;
+  box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.2);
+}
