@@ -12,6 +12,7 @@ import { Paper } from '../../model/Paper.js'; // Import Paper class
 import { logger } from '../../util/logger.js';
 import { MessageActions, sendMessageToBackend, addContentScriptMessageListener } from '../../util/message.js';
 import { PLATFORM_KEYS, PAGE_TYPE } from '../../constants.js';
+import { configService } from '../../service/configService.js';
 
 class UIManager {
   constructor() {
@@ -464,6 +465,9 @@ class UIManager {
       // 调试：检查PDF链接情况
       const pdfStats = this.analyzePdfLinks(allPapers);
       logger.log('[UI_TRACE] handleStartOrganize: PDF链接统计:', pdfStats);
+
+      // 🔄 保存当前配置为默认配置（直接访问chrome.storage）
+      await this._saveOrganizeConfigAsDefaults(selectedOptions);
 
       // 获取前台配置（从 PopupWindow 的选项）
       // 保持与后台期望的格式一致
@@ -960,6 +964,41 @@ class UIManager {
     const componentCount = this.components.size;
     const controlsComponentCount = this.controlsComponents.size;
     return componentCount + controlsComponentCount;
+  }
+
+  /**
+   * 保存当前整理配置为默认配置（直接使用configService）
+   * @param {Object} selectedOptions - 当前选择的配置选项
+   * @private
+   */
+  async _saveOrganizeConfigAsDefaults(selectedOptions) {
+    try {
+      logger.log('[UI_TRACE] _saveOrganizeConfigAsDefaults: 开始保存配置为默认值:', selectedOptions);
+
+      // 构造要保存的配置对象，排除storage部分（因为storage是每次任务特定的）
+      const configToSave = {
+        downloadPdf: selectedOptions.downloadPdf || false,
+        translation: {
+          enabled: selectedOptions.translation?.enabled || false,
+          targetLanguage: selectedOptions.translation?.targetLanguage || 'zh-CN'
+        },
+        classification: {
+          enabled: selectedOptions.classification?.enabled || false,
+          selectedStandard: selectedOptions.classification?.selectedStandard || 'research_method'
+        }
+      };
+
+      // 直接使用configService保存配置
+      const result = await configService.updateOrganizeDefaults(configToSave);
+
+      if (result) {
+        logger.log('[UI_TRACE] _saveOrganizeConfigAsDefaults: 配置保存成功');
+      } else {
+        logger.warn('[UI_TRACE] _saveOrganizeConfigAsDefaults: 配置保存失败');
+      }
+    } catch (error) {
+      logger.error('[UI_TRACE] _saveOrganizeConfigAsDefaults: 保存配置时发生错误:', error);
+    }
   }
 }
 
