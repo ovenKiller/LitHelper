@@ -165,9 +165,9 @@ class FileManagementService {
 
       // 生成PDF文件名
       const filename = this._generatePdfFilename(paperTitle);
-      
+
       logger.log(`[FileManagementService] 下载PDF: ${filename} 到目录: ${taskDirectory}`);
-      
+
       return await this.downloadFileToDirectory(pdfUrl, filename, taskDirectory, {
         conflictAction: 'uniquify' // 如果文件已存在，自动重命名
       });
@@ -178,6 +178,61 @@ class FileManagementService {
         error: error.message,
         pdfUrl: pdfUrl,
         paperTitle: paperTitle,
+        taskDirectory: taskDirectory
+      };
+    }
+  }
+
+  /**
+   * 保存CSV文件到指定目录
+   * @param {Object} data - CSV数据对象
+   * @param {string} filename - 文件名（不含扩展名）
+   * @param {string} taskDirectory - 任务目录名称
+   * @returns {Promise<Object>} 保存结果
+   */
+  async saveCsvFile(data, filename, taskDirectory) {
+    try {
+      if (!data || !filename || !taskDirectory) {
+        throw new Error('CSV保存参数不完整');
+      }
+
+      // 生成CSV内容
+      const csvContent = this._generateCsvContent(data);
+
+      // 生成完整文件名
+      const csvFilename = this._generateCsvFilename(filename);
+
+      logger.log(`[FileManagementService] 保存CSV: ${csvFilename} 到目录: ${taskDirectory}`);
+
+      // 创建data URL
+      const dataUrl = `data:text/csv;charset=utf-8,${encodeURIComponent(csvContent)}`;
+
+      // 构建完整的下载路径
+      const fullPath = this.buildFullPath(taskDirectory);
+      const downloadPath = `${fullPath}/${csvFilename}`;
+
+      // 使用Chrome下载API保存文件
+      const downloadId = await chrome.downloads.download({
+        url: dataUrl,
+        filename: downloadPath,
+        conflictAction: 'uniquify'
+      });
+
+      logger.log(`[FileManagementService] CSV文件已保存: ${downloadPath}`);
+
+      return {
+        success: true,
+        downloadId: downloadId,
+        filename: csvFilename,
+        fullPath: downloadPath,
+        taskDirectory: taskDirectory
+      };
+    } catch (error) {
+      logger.error('[FileManagementService] CSV保存失败:', error);
+      return {
+        success: false,
+        error: error.message,
+        filename: filename,
         taskDirectory: taskDirectory
       };
     }
@@ -212,7 +267,7 @@ class FileManagementService {
     if (!paperTitle || typeof paperTitle !== 'string') {
       return `paper_${Date.now()}.pdf`;
     }
-    
+
     // 清理标题并生成文件名
     const cleanTitle = paperTitle
       .replace(/[<>:"/\\|?*]/g, '_') // 替换不合法字符
@@ -220,8 +275,124 @@ class FileManagementService {
       .replace(/_{2,}/g, '_') // 合并多个下划线
       .replace(/^_|_$/g, '') // 移除开头和结尾的下划线
       .substring(0, 100); // 限制长度
-    
+
     return `${cleanTitle || 'paper'}.pdf`;
+  }
+
+  /**
+   * 生成CSV文件名
+   * @param {string} baseFilename 基础文件名
+   * @returns {string} CSV文件名
+   * @private
+   */
+  _generateCsvFilename(baseFilename) {
+    if (!baseFilename || typeof baseFilename !== 'string') {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
+      return `papers_${timestamp}.csv`;
+    }
+
+    // 清理文件名并添加时间戳
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
+    const cleanFilename = baseFilename
+      .replace(/[<>:"/\\|?*]/g, '_') // 替换不合法字符
+      .replace(/\s+/g, '_') // 替换空格
+      .replace(/_{2,}/g, '_') // 合并多个下划线
+      .replace(/^_|_$/g, '') // 移除开头和结尾的下划线
+      .substring(0, 50); // 限制长度
+
+    return `${cleanFilename || 'papers'}_${timestamp}.csv`;
+  }
+
+  /**
+   * 生成CSV内容
+   * @param {Object} data - 包含headers和rows的数据对象
+   * @returns {string} CSV内容
+   * @private
+   */
+  _generateCsvContent(data) {
+    try {
+      if (!data || !data.headers || !data.rows) {
+        throw new Error('CSV数据格式不正确，需要包含headers和rows字段');
+      }
+
+      const { headers, rows } = data;
+
+      // 验证headers
+      if (!Array.isArray(headers) || headers.length === 0) {
+        throw new Error('CSV headers必须是非空数组');
+      }
+
+      // 验证rows
+      if (!Array.isArray(rows)) {
+        throw new Error('CSV rows必须是数组');
+      }
+
+      // 处理CSV头部
+      const csvHeaders = headers.map(header => this._escapeCsvField(header)).join(',');
+
+      // 处理CSV数据行
+      const csvRows = rows.map(row => {
+        if (!Array.isArray(row)) {
+          logger.warn('[FileManagementService] 跳过非数组格式的行:', row);
+          return null;
+        }
+
+        // 确保行的长度与头部一致
+        const paddedRow = [...row];
+        while (paddedRow.length < headers.length) {
+          paddedRow.push(''); // 填充空值
+        }
+
+        return paddedRow.slice(0, headers.length) // 截断多余的列
+          .map(field => this._escapeCsvField(field))
+          .join(',');
+      }).filter(row => row !== null); // 过滤掉无效行
+
+      // 组合CSV内容
+      return [csvHeaders, ...csvRows].join('\n');
+    } catch (error) {
+      logger.error('[FileManagementService] CSV内容生成失败:', error);
+      throw new Error(`CSV内容生成失败: ${error.message}`);
+    }
+  }
+
+  /**
+   * 转义CSV字段，处理特殊字符
+   * @param {any} field - 字段值
+   * @returns {string} 转义后的字段
+   * @private
+   */
+  _escapeCsvField(field) {
+    // 处理null、undefined等特殊值
+    if (field === null || field === undefined) {
+      return '';
+    }
+
+    // 转换为字符串
+    let str = String(field);
+
+    // 移除或替换潜在的危险字符
+    str = str
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // 移除控制字符
+      .replace(/\r\n/g, ' ') // 替换Windows换行符
+      .replace(/[\r\n]/g, ' ') // 替换其他换行符
+      .trim(); // 移除首尾空格
+
+    // 检查是否需要引号包围
+    const needsQuotes = str.includes(',') ||
+                       str.includes('"') ||
+                       str.includes('\n') ||
+                       str.includes('\r') ||
+                       str.startsWith(' ') ||
+                       str.endsWith(' ');
+
+    if (needsQuotes) {
+      // 转义内部的双引号
+      str = str.replace(/"/g, '""');
+      return `"${str}"`;
+    }
+
+    return str;
   }
 
   /**

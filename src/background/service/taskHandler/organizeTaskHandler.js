@@ -11,6 +11,7 @@ import { PERSISTENCE_STRATEGY, ORGANIZE_SUPPORTED_TASK_TYPES } from '../../../co
 import { logger } from '../../../util/logger.js';
 import { paperOrganizationService } from '../../feature/paperOrganizationService.js';
 import { fileManagementService } from '../../../service/fileManagementService.js';
+import aiServiceInstance from '../../../service/aiService.js';
 
 export class OrganizeTaskHandler extends BaseHandler {
   constructor() {
@@ -106,124 +107,231 @@ export class OrganizeTaskHandler extends BaseHandler {
       storage: options.storage || {}
     };
 
-    // 0. 存储路径设置和目录创建
-    if (options.storage?.taskDirectory) {
-      try {
-        logger.log(`[${paper.id}] 设置存储路径: ${options.storage.taskDirectory}`);
+    // 1. 设置存储路径
+    await this._handleStorage(paper, options, result);
 
-        // 使用文件管理服务创建子目录
-        const dirResult = await fileManagementService.createSubDirectory(options.storage.taskDirectory);
+    // 2. 执行翻译
+    const translationResult = await this._handleTranslation(paper, options, result);
+    logger.log(`[${paper.id}] 翻译处理完成，结果:`, translationResult);
 
-        if (dirResult.success) {
-          result.actions.push({
-            type: 'storage',
-            status: 'completed',
-            workingDirectory: fileManagementService.getWorkingDirectoryName(),
-            taskDirectory: dirResult.taskDirectory,
-            fullPath: dirResult.fullPath,
-            message: dirResult.message
-          });
+    // 3. 执行分类（如果启用）
+    const classificationResult = await this._handleClassification(paper, options, result);
+    logger.log(`[${paper.id}] 分类处理完成，结果:`, classificationResult);
 
-          // 更新result中的存储信息
-          result.storage = {
-            workingDirectory: fileManagementService.getWorkingDirectoryName(),
-            taskDirectory: dirResult.taskDirectory,
-            fullPath: dirResult.fullPath
-          };
-        } else {
-          throw new Error(dirResult.error || '目录创建失败');
-        }
-      } catch (error) {
-        logger.error(`[${paper.id}] 存储路径设置失败:`, error);
-        result.actions.push({
-          type: 'storage',
-          status: 'failed',
-          error: error.message,
-          message: `存储路径设置失败: ${error.message}`
-        });
-      }
-    }
+    // 4. 保存处理结果供批次CSV生成使用
+    result.processedData = {
+      originalAbstract: translationResult.originalText || paper.abstract,
+      translatedAbstract: translationResult.translatedText,
+      targetLanguage: options.translation?.targetLanguage,
+      classification: classificationResult,
+      classificationStandard: options.classification?.selectedStandard
+    };
 
-    // 1. PDF下载
-    if (options.downloadPdf && paper.pdfUrl && options.storage?.taskDirectory) {
-      try {
-        logger.log(`[${paper.id}] 执行PDF下载: ${paper.pdfUrl}`);
+    logger.log(`[${paper.id}] processedData 已保存:`, result.processedData);
 
-        // 使用文件管理服务下载PDF
-        const downloadResult = await fileManagementService.downloadPdf(
-          paper.pdfUrl,
-          paper.title,
-          options.storage.taskDirectory
-        );
-
-        if (downloadResult.success) {
-          result.actions.push({
-            type: 'download',
-            status: 'completed',
-            downloadId: downloadResult.downloadId,
-            filename: downloadResult.filename,
-            fullPath: downloadResult.fullPath,
-            message: `PDF下载成功: ${downloadResult.filename}`,
-            // 添加显示文件的功能
-            showInFolder: {
-              available: true,
-              downloadId: downloadResult.downloadId
-            }
-          });
-        } else {
-          throw new Error(downloadResult.error || 'PDF下载失败');
-        }
-      } catch (error) {
-        logger.error(`[${paper.id}] PDF下载失败:`, error);
-        result.actions.push({
-          type: 'download',
-          status: 'failed',
-          error: error.message,
-          message: `PDF下载失败: ${error.message}`
-        });
-      }
-    } else if (options.downloadPdf && !paper.pdfUrl) {
-      logger.warn(`[${paper.id}] 无法下载PDF: 缺少PDF链接`);
-      result.actions.push({
-        type: 'download',
-        status: 'failed',
-        error: '缺少PDF链接',
-        message: 'PDF下载失败: 论文没有可用的PDF链接'
-      });
-    } else if (options.downloadPdf && !options.storage?.taskDirectory) {
-      logger.warn(`[${paper.id}] 无法下载PDF: 缺少任务目录`);
-      result.actions.push({
-        type: 'download',
-        status: 'failed',
-        error: '缺少任务目录',
-        message: 'PDF下载失败: 未指定任务目录'
-      });
-    }
-
-    // 2. 翻译功能
-    if (options.translation?.enabled) {
-      logger.log(`[${paper.id}] 执行翻译到 ${options.translation.targetLanguage}`);
-      result.actions.push({
-        type: 'translation',
-        status: 'completed',
-        targetLanguage: options.translation.targetLanguage,
-        message: `翻译到${options.translation.targetLanguage}已完成`
-      });
-    }
-
-    // 3. 分类功能
-    if (options.classification?.enabled) {
-      logger.log(`[${paper.id}] 执行分类，标准: ${options.classification.selectedStandard}`);
-      result.actions.push({
-        type: 'classification',
-        status: 'completed',
-        standard: options.classification.selectedStandard,
-        message: '论文分类已完成'
-      });
-    }
+    // 调试：打印处理结果
+    logger.log(`[${paper.id}] 处理完成，数据:`, {
+      title: paper.title,
+      allVersionsUrl: paper.allVersionsUrl,
+      pdfUrl: paper.pdfUrl,
+      translatedAbstract: result.processedData.translatedAbstract,
+      classification: result.processedData.classification
+    });
 
     return result;
   }
+
+  /**
+   * 处理存储路径设置
+   * @param {Object} paper - 论文对象
+   * @param {Object} options - 选项
+   * @param {Object} result - 结果对象
+   * @private
+   */
+  async _handleStorage(paper, options, result) {
+    if (!options.storage?.taskDirectory) return;
+
+    await this._executeAction('storage', paper.id, async () => {
+      logger.log(`[${paper.id}] 设置存储路径: ${options.storage.taskDirectory}`);
+
+      const dirResult = await fileManagementService.createSubDirectory(options.storage.taskDirectory);
+
+      if (!dirResult.success) {
+        throw new Error(dirResult.error || '目录创建失败');
+      }
+
+      // 更新result中的存储信息
+      result.storage = {
+        workingDirectory: fileManagementService.getWorkingDirectoryName(),
+        taskDirectory: dirResult.taskDirectory,
+        fullPath: dirResult.fullPath
+      };
+
+      return {
+        workingDirectory: fileManagementService.getWorkingDirectoryName(),
+        taskDirectory: dirResult.taskDirectory,
+        fullPath: dirResult.fullPath,
+        message: dirResult.message
+      };
+    }, result);
+  }
+
+  /**
+   * 处理翻译功能
+   * @param {Object} paper - 论文对象
+   * @param {Object} options - 选项
+   * @param {Object} result - 结果对象
+   * @returns {Promise<Object>} 翻译结果对象
+   * @private
+   */
+  async _handleTranslation(paper, options, result) {
+    if (!options.translation?.enabled) {
+      return { translatedText: null, originalText: paper.abstract };
+    }
+
+    const translationResult = await this._executeAction('translation', paper.id, async () => {
+      logger.log(`[${paper.id}] 执行翻译到 ${options.translation.targetLanguage}`);
+
+      const translatedText = await aiServiceInstance.translateAbstract(
+        paper.abstract,
+        options.translation.targetLanguage
+      );
+
+      logger.log(`[${paper.id}] AI翻译服务返回:`, {
+        type: typeof translatedText,
+        content: translatedText,
+        length: translatedText ? translatedText.length : 0
+      });
+
+      if (!translatedText) {
+        throw new Error('翻译失败，返回空结果');
+      }
+
+      return {
+        originalText: paper.abstract,
+        translatedText: translatedText,
+        targetLanguage: options.translation.targetLanguage,
+        message: `翻译到${options.translation.targetLanguage}已完成`
+      };
+    }, result, { translatedText: null, originalText: paper.abstract }); // 失败时返回原文
+
+    // 调试：打印翻译结果
+    logger.log(`[${paper.id}] 翻译结果类型:`, typeof translationResult);
+    logger.log(`[${paper.id}] 翻译结果内容:`, translationResult);
+
+    // 确保返回正确的格式
+    if (typeof translationResult === 'string') {
+      const result = { translatedText: translationResult, originalText: paper.abstract };
+      logger.log(`[${paper.id}] 返回字符串格式翻译结果:`, result);
+      return result;
+    }
+
+    const finalResult = translationResult || { translatedText: null, originalText: paper.abstract };
+    logger.log(`[${paper.id}] 返回最终翻译结果:`, finalResult);
+    return finalResult;
+  }
+
+  /**
+   * 处理分类功能
+   * @param {Object} paper - 论文对象
+   * @param {Object} options - 选项
+   * @param {Object} result - 结果对象
+   * @returns {Promise<string|null>} 分类结果
+   * @private
+   */
+  async _handleClassification(paper, options, result) {
+    if (!options.classification?.enabled) return null;
+
+    // 目前是占位实现
+    return await this._executeAction('classification', paper.id, async () => {
+      logger.log(`[${paper.id}] 执行分类，标准: ${options.classification.selectedStandard}`);
+
+      // TODO: 实际的分类逻辑，这里返回一个示例分类
+      const mockCategory = this._getMockCategory(paper.title, options.classification.selectedStandard);
+
+      return {
+        category: mockCategory,
+        standard: options.classification.selectedStandard,
+        message: '论文分类已完成'
+      };
+    }, result, null);
+  }
+
+  /**
+   * 获取模拟分类结果（临时实现）
+   * @param {string} title - 论文标题
+   * @param {string} standard - 分类标准
+   * @returns {string} 分类结果
+   * @private
+   */
+  _getMockCategory(title, standard) {
+    // 简单的关键词匹配分类逻辑
+    const titleLower = (title || '').toLowerCase();
+
+    if (standard === 'ACM') {
+      if (titleLower.includes('machine learning') || titleLower.includes('ai')) return 'Computing methodologies → Machine learning';
+      if (titleLower.includes('network') || titleLower.includes('internet')) return 'Networks → Network protocols';
+      if (titleLower.includes('database') || titleLower.includes('data')) return 'Information systems → Database management';
+      if (titleLower.includes('security') || titleLower.includes('crypto')) return 'Security and privacy → Cryptography';
+      return 'General and reference → General literature';
+    } else if (standard === 'IEEE') {
+      if (titleLower.includes('machine learning') || titleLower.includes('ai')) return 'Artificial Intelligence';
+      if (titleLower.includes('network') || titleLower.includes('internet')) return 'Computer Networks';
+      if (titleLower.includes('database') || titleLower.includes('data')) return 'Database Systems';
+      if (titleLower.includes('security') || titleLower.includes('crypto')) return 'Computer Security';
+      return 'Computer Science';
+    }
+
+    return 'Uncategorized';
+  }
+
+
+
+  /**
+   * 通用的动作执行器，统一处理错误和结果记录
+   * @param {string} actionType - 动作类型
+   * @param {string} paperId - 论文ID
+   * @param {Function} actionFn - 执行的异步函数
+   * @param {Object} result - 结果对象
+   * @param {any} fallbackValue - 失败时的回退值
+   * @returns {Promise<any>} 执行结果或回退值
+   * @private
+   */
+  async _executeAction(actionType, paperId, actionFn, result, fallbackValue = null) {
+    try {
+      const actionResult = await actionFn();
+      logger.log(`[${paperId}] _executeAction ${actionType} 成功，结果:`, actionResult);
+
+      result.actions.push({
+        type: actionType,
+        status: 'completed',
+        ...actionResult
+      });
+
+      // 根据动作类型返回相应的结果
+      if (actionType === 'translation') {
+        // 对于翻译，返回完整的结果对象
+        logger.log(`[${paperId}] _executeAction 返回翻译结果:`, actionResult);
+        return actionResult;
+      } else if (actionType === 'classification') {
+        return actionResult.category || actionResult;
+      }
+      return actionResult;
+    } catch (error) {
+      logger.error(`[${paperId}] ${actionType}失败:`, error);
+
+      result.actions.push({
+        type: actionType,
+        status: 'failed',
+        error: error.message,
+        message: `${actionType}失败: ${error.message}`
+      });
+
+      return fallbackValue;
+    }
+  }
+
+
 
   /**
    * 可选校验钩子（占位）
@@ -243,14 +351,31 @@ export class OrganizeTaskHandler extends BaseHandler {
     try {
       await super.afterExecute(task, result);
     } finally {
-      // 将占位结果回传给组织服务，用于更新对应批次/论文的状态
+      // 将详细结果回传给组织服务，用于更新对应批次/论文的状态和CSV生成
       try {
-        const notifyOk = paperOrganizationService.notifyOrganizeTaskCompleted(task.key, {
-          success: !!result?.success,
-          error: result?.error
-        });
-        if (!notifyOk) {
-          logger.debug(`[${this.handlerName}] 未找到对应批次映射（可能来自旧入口或多论文任务）: ${task.key}`);
+        // 调试：打印完整的result结构
+        logger.log(`[${this.handlerName}] afterExecute 收到的result:`, result);
+
+        // 从result中提取单篇论文的处理结果
+        // result.data.details 是一个数组，包含每篇论文的处理结果
+        const paperResult = result?.data?.details?.[0];
+        logger.log(`[${this.handlerName}] 提取的论文结果:`, paperResult);
+
+        if (paperResult) {
+          const notifyOk = paperOrganizationService.notifyOrganizeTaskCompleted(task.key, {
+            success: !!paperResult.success,
+            error: paperResult.error,
+            // 传递处理后的数据供CSV生成使用
+            processedData: paperResult.result?.processedData,
+            actions: paperResult.result?.actions,
+            storage: paperResult.result?.storage
+          });
+
+          if (!notifyOk) {
+            logger.debug(`[${this.handlerName}] 未找到对应批次映射（可能来自旧入口或多论文任务）: ${task.key}`);
+          }
+        } else {
+          logger.warn(`[${this.handlerName}] 无法从result中提取论文处理结果`);
         }
       } catch (e) {
         logger.warn(`[${this.handlerName}] 通知组织服务失败: ${e?.message}`);

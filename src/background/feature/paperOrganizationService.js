@@ -12,6 +12,7 @@ import { logger } from '../../util/logger.js';
 import { ORGANIZE_SUPPORTED_TASK_TYPES } from '../../constants.js';
 import { Task } from '../../model/task.js';
 import { paperMetadataService } from './paperMetadataService.js';
+import { fileManagementService } from '../../service/fileManagementService.js';
 
 const BATCH_STATUS = {
   PENDING: 'pending',      // 创建完成，等待调度
@@ -211,7 +212,7 @@ class PaperOrganizationService {
   /**
    * 由外部（如 MessageService/OrganizeTaskHandler）回调：某个 Organize 任务已完成
    * @param {string} taskKey
-   * @param {{success:boolean, error?:string}} result
+   * @param {{success:boolean, error?:string, processedData?:Object, actions?:Array, storage?:Object}} result
    * @returns {boolean}
    */
   notifyOrganizeTaskCompleted(taskKey, result) {
@@ -230,6 +231,16 @@ class PaperOrganizationService {
       if (result?.success) {
         item.status = PAPER_STATUS.COMPLETED;
         item.error = undefined;
+        // 保存处理结果供CSV生成使用
+        item.processedData = result.processedData;
+        item.actions = result.actions;
+        item.storage = result.storage;
+
+        // 调试：打印保存的处理数据
+        logger.log(`[PaperOrganizationService] 保存论文 ${paperId} 的处理数据:`, {
+          processedData: item.processedData,
+          translatedAbstract: item.processedData?.translatedAbstract
+        });
       } else {
         item.status = PAPER_STATUS.FAILED;
         item.error = result?.error || 'Organize 执行失败';
@@ -324,8 +335,131 @@ class PaperOrganizationService {
     }
   }
 
-  _finalizeBatchIfPossible(batch) {
+  async _finalizeBatchIfPossible(batch) {
     this._recomputeBatchProgress(batch);
+
+    // 如果批次已完成，生成CSV文件
+    if (batch.status === BATCH_STATUS.COMPLETED && batch.options.storage?.taskDirectory) {
+      await this._generateBatchCsv(batch);
+    }
+  }
+
+  /**
+   * 为完成的批次生成CSV文件
+   * @param {Object} batch - 批次对象
+   * @private
+   */
+  async _generateBatchCsv(batch) {
+    try {
+      logger.log(`[PaperOrganizationService] 开始为批次 ${batch.id} 生成CSV文件`);
+
+      // 调试：打印批次数据
+      logger.log(`[PaperOrganizationService] 批次包含 ${batch.papers.length} 篇论文`);
+      batch.papers.forEach((item, index) => {
+        logger.log(`[PaperOrganizationService] 论文 ${index + 1}:`, {
+          title: item.paper.title,
+          allVersionsUrl: item.paper.allVersionsUrl,
+          pdfUrl: item.paper.pdfUrl,
+          processedData: item.processedData
+        });
+      });
+
+      // 准备CSV数据
+      const csvData = this._prepareBatchCsvData(batch);
+
+      // 生成文件名
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
+      const filename = `batch_${batch.id}_${timestamp}`;
+
+      // 保存CSV文件
+      const result = await fileManagementService.saveCsvFile(
+        csvData,
+        filename,
+        batch.options.storage.taskDirectory
+      );
+
+      if (result.success) {
+        logger.log(`[PaperOrganizationService] 批次CSV文件已生成: ${result.fullPath}`);
+        // 将CSV信息保存到批次中
+        batch.csvFile = {
+          filename: result.filename,
+          downloadId: result.downloadId,
+          fullPath: result.fullPath,
+          generatedAt: new Date().toISOString()
+        };
+      } else {
+        logger.error(`[PaperOrganizationService] 批次CSV文件生成失败: ${result.error}`);
+      }
+    } catch (error) {
+      logger.error(`[PaperOrganizationService] 生成批次CSV文件异常:`, error);
+    }
+  }
+
+  /**
+   * 准备批次CSV数据
+   * @param {Object} batch - 批次对象
+   * @returns {Object} CSV数据对象
+   * @private
+   */
+  _prepareBatchCsvData(batch) {
+    // 根据选项动态构建表头
+    const headers = ['Title', 'Authors', 'Original Abstract'];
+
+    // 如果启用了翻译，添加翻译相关列
+    if (batch.options.translation?.enabled) {
+      headers.push('Translated Abstract');
+    }
+
+    // 添加链接和PDF列
+    headers.push('All Versions URL', 'PDF URL');
+
+    // 如果启用了分类，添加分类列
+    if (batch.options.classification?.enabled) {
+      headers.push('Category');
+    }
+
+    const rows = batch.papers.map((item, index) => {
+      const paper = item.paper;
+      const processedData = item.processedData || {};
+
+      // 调试：打印每篇论文的数据
+      logger.log(`[PaperOrganizationService] CSV行 ${index + 1} 数据:`, {
+        title: paper.title,
+        translatedAbstract: processedData.translatedAbstract,
+        allVersionsUrl: paper.allVersionsUrl,
+        pdfUrl: paper.pdfUrl,
+        processedData: processedData
+      });
+
+      const row = [
+        paper.title || '',
+        paper.authors || '',
+        processedData.originalAbstract || paper.abstract || ''
+      ];
+
+      // 如果启用了翻译，添加翻译后的摘要
+      if (batch.options.translation?.enabled) {
+        const translatedText = processedData.translatedAbstract || '';
+        logger.log(`[PaperOrganizationService] 添加翻译文本到CSV: "${translatedText}"`);
+        row.push(translatedText);
+      }
+
+      // 添加链接和PDF（注意字段名：allVersionsUrl是复数）
+      row.push(
+        paper.allVersionsUrl || '',
+        paper.pdfUrl || ''
+      );
+
+      // 如果启用了分类，添加分类结果
+      if (batch.options.classification?.enabled) {
+        row.push(processedData.classification || '');
+      }
+
+      logger.log(`[PaperOrganizationService] 最终CSV行数据:`, row);
+      return row;
+    });
+
+    return { headers, rows };
   }
 
   _projectBatch(batch, withItems = false) {

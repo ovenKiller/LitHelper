@@ -674,7 +674,78 @@ ${textList.join('\n\n')}
   "abstract_list": [1, 2, 3]
 }
 `;
-}
+  }
+
+  /**
+   * 翻译论文摘要到指定语言
+   * @param {string} abstract - 论文摘要文本
+   * @param {string} targetLanguage - 目标语言（如：中文、英文、日文等）
+   * @returns {Promise<string>} 翻译后的文本，失败时返回空字符串
+   */
+  async translateAbstract(abstract, targetLanguage) {
+    try {
+      const prompt = this._createTranslationPrompt(abstract, targetLanguage);
+
+      const aiResponse = await this.callLLM(prompt);
+      if (!aiResponse.success) {
+        logger.error('调用AI服务失败:', aiResponse.message);
+        return '';
+      }
+
+      // 使用封装的方法解析AI返回的JSON
+      let translationResult;
+      try {
+        translationResult = this._extractAndParseJSON(aiResponse.data);
+      } catch (parseError) {
+        logger.error('AI返回的翻译数据解析失败:', aiResponse.data);
+        return '';
+      }
+
+      // 验证返回格式并返回翻译文本
+      if (!translationResult.translatedText) {
+        logger.error('AI返回的翻译结果缺少必要字段');
+        return '';
+      }
+
+      return translationResult.translatedText;
+
+    } catch (error) {
+      logger.error('论文摘要翻译失败:', error);
+      return '';
+    }
+  }
+
+  /**
+   * 创建翻译的AI提示
+   * @param {string} abstract - 论文摘要文本
+   * @param {string} targetLanguage - 目标语言
+   * @returns {string} AI提示
+   * @private
+   */
+  _createTranslationPrompt(abstract, targetLanguage) {
+    return `你是一个专业的学术翻译专家，需要将论文摘要翻译为指定语言。
+
+请将以下论文摘要翻译为${targetLanguage}：
+
+\`\`\`
+${abstract}
+\`\`\`
+
+翻译要求：
+1. 保持学术性和专业性
+2. 准确传达原文的含义和技术细节
+3. 使用该语言的学术写作规范
+4. 保持原文的逻辑结构和层次
+5. 专业术语要准确翻译
+
+请以JSON格式返回翻译结果：
+{
+  "originalText": "原文摘要",
+  "translatedText": "翻译后的摘要",
+  "targetLanguage": "目标语言",
+  "translationNotes": "翻译说明（可选）"
+}`;
+  }
 }
 // 创建并导出服务实例
 const aiServiceInstance = new AIService();
