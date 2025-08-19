@@ -213,23 +213,188 @@ class PopupWindow {
     const actionButtons = document.createElement('div');
     actionButtons.className = 'rs-action-buttons';
 
-    // 1. PDF下载开关
-    const pdfOption = this._createToggleOption('downloadPdf', 'PDF下载', this.selectedOptions.downloadPdf);
-    actionButtons.appendChild(pdfOption);
+    // 第一行：三个模块横排（每个模块为上下结构）
+    const bar = document.createElement('div');
+    bar.className = 'rs-action-bar';
 
-    // 2. 翻译功能
-    const translationSection = this._createTranslationSection();
-    actionButtons.appendChild(translationSection);
+    // 模块1：翻译（第一行：标题 + 开关；第二行：语言下拉，仅在打开时显示）
+    const translationModule = document.createElement('div');
+    translationModule.className = 'rs-action-module rs-module-translation';
 
-    // 3. 分类功能
-    const classificationSection = this._createClassificationSection();
-    actionButtons.appendChild(classificationSection);
+    const transHeader = document.createElement('div');
+    transHeader.className = 'rs-module-header';
 
-    // 4. 存储路径设置
-    const storageSection = this._createStorageSection();
-    actionButtons.appendChild(storageSection);
+    const transTitle = document.createElement('span');
+    transTitle.className = 'rs-module-title';
+    transTitle.textContent = '翻译';
 
-    // 5. 开始整理按钮
+    const transToggle = document.createElement('label');
+    transToggle.className = 'rs-toggle-switch';
+
+    const transCheckbox = document.createElement('input');
+    transCheckbox.type = 'checkbox';
+    transCheckbox.id = 'rs-translation-enabled';
+    transCheckbox.checked = this.selectedOptions.translation.enabled;
+
+    const transSlider = document.createElement('span');
+    transSlider.className = 'rs-toggle-slider';
+
+    transToggle.appendChild(transCheckbox);
+    transToggle.appendChild(transSlider);
+
+    transHeader.appendChild(transTitle);
+    transHeader.appendChild(transToggle);
+
+    const transBody = document.createElement('div');
+    transBody.className = 'rs-module-body';
+
+    const languageSelect = document.createElement('select');
+    languageSelect.className = 'rs-language-select';
+    languageSelect.style.display = this.selectedOptions.translation.enabled ? 'block' : 'none';
+
+    if (this.translationLanguages && this.translationLanguages.length > 0) {
+      this.translationLanguages.forEach(lang => {
+        const option = document.createElement('option');
+        option.value = lang.code;
+        option.textContent = lang.name;
+        option.selected = lang.code === this.selectedOptions.translation.targetLanguage;
+        languageSelect.appendChild(option);
+      });
+    } else {
+      const defaultOption = document.createElement('option');
+      defaultOption.value = '';
+      defaultOption.textContent = '暂无可用语言';
+      languageSelect.appendChild(defaultOption);
+    }
+
+    languageSelect.addEventListener('change', (e) => {
+      this.selectedOptions.translation.targetLanguage = e.target.value;
+    });
+
+    transCheckbox.addEventListener('change', (e) => {
+      this.selectedOptions.translation.enabled = e.target.checked;
+      languageSelect.style.display = e.target.checked ? 'block' : 'none';
+    });
+
+    transBody.appendChild(languageSelect);
+    translationModule.appendChild(transHeader);
+    translationModule.appendChild(transBody);
+
+    // 模块2：分类（第一行：标题 + 开关；第二行：标准下拉，仅在打开时显示）
+    const classificationModule = document.createElement('div');
+    classificationModule.className = 'rs-action-module rs-module-classification';
+
+    const clsHeader = document.createElement('div');
+    clsHeader.className = 'rs-module-header';
+
+    const clsTitle = document.createElement('span');
+    clsTitle.className = 'rs-module-title';
+    clsTitle.textContent = '分类';
+
+    const clsToggle = document.createElement('label');
+    clsToggle.className = 'rs-toggle-switch';
+
+    const clsCheckbox = document.createElement('input');
+    clsCheckbox.type = 'checkbox';
+    clsCheckbox.id = 'rs-classification-enabled';
+    clsCheckbox.checked = this.selectedOptions.classification.enabled;
+
+    const clsSlider = document.createElement('span');
+    clsSlider.className = 'rs-toggle-slider';
+
+    clsToggle.appendChild(clsCheckbox);
+    clsToggle.appendChild(clsSlider);
+
+    clsHeader.appendChild(clsTitle);
+    clsHeader.appendChild(clsToggle);
+
+    const clsBody = document.createElement('div');
+    clsBody.className = 'rs-module-body';
+
+    const standardSelect = document.createElement('select');
+    standardSelect.className = 'rs-standard-select';
+    standardSelect.style.display = this.selectedOptions.classification.enabled ? 'block' : 'none';
+
+    if (this.classificationStandards && this.classificationStandards.length > 0) {
+      this.classificationStandards.forEach(standard => {
+        const option = document.createElement('option');
+        option.value = standard.id;
+        option.textContent = standard.title;
+        option.selected = standard.id === this.selectedOptions.classification.selectedStandard;
+        standardSelect.appendChild(option);
+      });
+    } else {
+      const defaultOption = document.createElement('option');
+      defaultOption.value = '';
+      defaultOption.textContent = '暂无可用分类标准';
+      standardSelect.appendChild(defaultOption);
+    }
+
+    standardSelect.addEventListener('change', (e) => {
+      this.selectedOptions.classification.selectedStandard = e.target.value;
+    });
+
+    clsCheckbox.addEventListener('change', (e) => {
+      this.selectedOptions.classification.enabled = e.target.checked;
+      standardSelect.style.display = e.target.checked ? 'block' : 'none';
+    });
+
+    clsBody.appendChild(standardSelect);
+    classificationModule.appendChild(clsHeader);
+    classificationModule.appendChild(clsBody);
+
+    // 模块3：保存目录（第一行：标题；第二行：工作目录前缀 + 当前目录输入）
+    const dirModule = document.createElement('div');
+    dirModule.className = 'rs-action-module rs-dir-module';
+
+    const dirHeader = document.createElement('div');
+    dirHeader.className = 'rs-module-header';
+
+    const dirTitle = document.createElement('span');
+    dirTitle.className = 'rs-module-title';
+    dirTitle.textContent = '保存目录';
+
+    dirHeader.appendChild(dirTitle);
+
+    const dirBody = document.createElement('div');
+    dirBody.className = 'rs-module-body';
+
+    const pathRow = document.createElement('div');
+    pathRow.className = 'rs-path-row';
+
+    const prefix = document.createElement('span');
+    prefix.className = 'rs-path-prefix';
+    const workingPrefix = this.selectedOptions.storage.workingDirectory || '';
+    prefix.textContent = workingPrefix ? `${workingPrefix}/` : '';
+
+    const dirInput = document.createElement('input');
+    dirInput.type = 'text';
+    dirInput.className = 'rs-compact-input';
+    dirInput.placeholder = '任务目录名…';
+    dirInput.value = this.selectedOptions.storage.taskDirectory || '';
+    dirInput.addEventListener('input', (e) => {
+      this.selectedOptions.storage.taskDirectory = e.target.value;
+      this._updateFullPath();
+    });
+
+    // 保存引用供自动命名等使用
+    this.taskDirInput = dirInput;
+
+    pathRow.appendChild(prefix);
+    pathRow.appendChild(dirInput);
+    dirBody.appendChild(pathRow);
+
+    dirModule.appendChild(dirHeader);
+    dirModule.appendChild(dirBody);
+
+    // 将三个模块加入一行
+    bar.appendChild(translationModule);
+    bar.appendChild(classificationModule);
+    bar.appendChild(dirModule);
+
+    actionButtons.appendChild(bar);
+
+    // 第二行：开始整理按钮
     const startOrganizeButton = document.createElement('button');
     startOrganizeButton.className = 'rs-start-organize-btn';
     startOrganizeButton.textContent = '开始整理';
@@ -286,16 +451,7 @@ class PopupWindow {
     const removeButton = document.createElement('div');
     removeButton.className = 'rs-popup-paper-remove';
 
-    // 添加明显的删除按钮样式
-    removeButton.style.cursor = 'pointer';
-    removeButton.style.minWidth = '30px';
-    removeButton.style.minHeight = '30px';
-    removeButton.style.display = 'flex';
-    removeButton.style.alignItems = 'center';
-    removeButton.style.justifyContent = 'center';
-    removeButton.style.borderRadius = '50%';
-    removeButton.style.backgroundColor = 'rgba(255, 0, 0, 0.1)';
-    removeButton.style.margin = '0 0 0 10px';
+    // 样式由 CSS 控制，尽量避免内联样式，便于主题统一
     removeButton.title = '删除此论文';
 
     try {
@@ -338,8 +494,8 @@ class PopupWindow {
       logger.log('[POPUP] 删除按钮被点击:', paper.id);
       logger.log('[POPUP] 删除回调函数:', onRemovePaper);
 
-      // 视觉反馈
-      this.style.backgroundColor = 'rgba(255, 0, 0, 0.3)';
+      // 视觉反馈：通过类名控制
+      this.classList.add('removing');
 
       try {
         // 显示加载状态
@@ -361,7 +517,7 @@ class PopupWindow {
           .catch(error => {
             logger.error(`[POPUP] 删除论文失败 ${paper.id}:`, error);
             // 恢复按钮状态
-            this.style.backgroundColor = 'rgba(255, 0, 0, 0.1)';
+            this.classList.remove('removing');
             this.innerHTML = '';
             this.textContent = '×';
             this.style.fontSize = '20px';
@@ -388,7 +544,7 @@ class PopupWindow {
       } catch (error) {
         logger.error(`[POPUP] 调用删除回调时出错 ${paper.id}:`, error);
         // 恢复按钮状态
-        this.style.backgroundColor = 'rgba(255, 0, 0, 0.1)';
+        this.classList.remove('removing');
         this.textContent = '×';
       }
     });
@@ -669,6 +825,8 @@ class PopupWindow {
     editButton.style.display = this.selectedOptions.classification.enabled ? 'block' : 'none';
     editButton.style.marginTop = '8px';
     editButton.style.width = '100%';
+
+
     editButton.style.padding = '6px';
     editButton.style.fontSize = '12px';
     editButton.style.backgroundColor = '#f0f0f0';
@@ -803,9 +961,9 @@ class PopupWindow {
   _generateTaskDirectoryName() {
     try {
       // 获取当前论文列表中的第一篇论文
-      const paperItems = this.paperList?.querySelectorAll('.rs-paper-item');
+      const paperItems = this.paperList?.querySelectorAll('.rs-popup-paper-item');
       if (paperItems && paperItems.length > 0) {
-        const firstPaperTitle = paperItems[0].querySelector('.rs-paper-title')?.textContent;
+        const firstPaperTitle = paperItems[0].querySelector('.rs-popup-paper-title')?.textContent;
         if (firstPaperTitle) {
           // 取前10个字符，并清理不适合作为文件夹名的字符
           let dirName = firstPaperTitle.substring(0, 10)
@@ -841,18 +999,24 @@ class PopupWindow {
   _updateFullPath() {
     const taskDir = this.selectedOptions.storage.taskDirectory;
 
+    const safeSetPreview = (text) => {
+      if (this.pathPreview) {
+        this.pathPreview.textContent = text;
+      }
+    };
+
     if (taskDir) {
       try {
         // 使用文件管理服务构建完整路径
         const fullPath = fileManagementService.buildFullPath(taskDir);
         this.selectedOptions.storage.fullPath = fullPath;
-        this.pathPreview.textContent = fullPath;
+        safeSetPreview(fullPath);
       } catch (error) {
         logger.error('[POPUP] 构建路径失败:', error);
-        this.pathPreview.textContent = `${this.selectedOptions.storage.workingDirectory}/[任务目录名无效]`;
+        safeSetPreview(`${this.selectedOptions.storage.workingDirectory}/[任务目录名无效]`);
       }
     } else {
-      this.pathPreview.textContent = `${this.selectedOptions.storage.workingDirectory}/[请输入任务目录名]`;
+      safeSetPreview(`${this.selectedOptions.storage.workingDirectory}/[请输入任务目录名]`);
     }
   }
 

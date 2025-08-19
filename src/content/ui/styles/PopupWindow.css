@@ -1,6 +1,6 @@
 /**
  * PopupWindow.css
- * 
+ *
  * Styles for the popup window component
  */
 
@@ -111,16 +111,17 @@
   overflow-y: auto;
   max-height: calc(50vh - 120px); /* Adjust for header and other fixed elements */
   margin-bottom: 16px;
-  border: 1px solid #e0e0e0;
+  border: none; /* 去掉边框 */
   border-radius: 6px;
   padding: 8px;
+  box-shadow: none; /* 去掉阴影 */
 }
 
 /* 论文列表 */
 .rs-popup-paper-list {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 8px; /* 减少一半：16px -> 8px */
 }
 
 .rs-popup-paper-item {
@@ -270,6 +271,10 @@ input:checked + .rs-toggle-slider:before {
   border-radius: 4px;
   font-size: 16px;
   cursor: pointer;
+  display: inline-flex;           /* 垂直居中关键 */
+  align-items: center;            /* 垂直居中关键 */
+  justify-content: center;        /* 水平居中 */
+  line-height: 1;                 /* 避免基线偏移 */
   text-align: center;
   transition: background-color 0.3s ease;
 }
@@ -493,3 +498,347 @@ input:checked + .rs-toggle-slider:before {
     justify-content: center;
   }
 }
+
+/* --- Modern UI theme enhancements --- */
+:root {
+  --rs-bg: #ffffff;
+  --rs-surface: rgba(255, 255, 255, 0.8);
+  --rs-border: rgba(0,0,0,0.08);
+  --rs-text: #1f2937;
+  --rs-muted: #6b7280;
+  --rs-primary: #3b82f6;
+  --rs-primary-600: #2563eb;
+  --rs-success: #16a34a;
+  --rs-danger: #ef4444;
+  --rs-warning: #f59e0b;
+  --rs-shadow: 0 10px 30px rgba(2, 6, 23, 0.15);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --rs-bg: #0b1220;
+    --rs-surface: rgba(17, 24, 39, 0.6);
+    --rs-border: rgba(255,255,255,0.08);
+    --rs-text: #e5e7eb;
+    --rs-muted: #9ca3af;
+    --rs-primary: #60a5fa;
+    --rs-primary-600: #3b82f6;
+    --rs-success: #22c55e;
+    --rs-danger: #f87171;
+    --rs-warning: #fbbf24;
+    --rs-shadow: 0 12px 40px rgba(0,0,0,0.35);
+    backdrop-filter: saturate(140%) contrast(110%);
+  }
+}
+
+.rs-popup {
+  background: var(--rs-surface);
+  backdrop-filter: blur(14px) saturate(120%);
+  -webkit-backdrop-filter: blur(14px) saturate(120%);
+  border: 1px solid var(--rs-border);
+  box-shadow: var(--rs-shadow);
+}
+
+.rs-popup-header {
+  background: linear-gradient(135deg, var(--rs-primary), var(--rs-primary-600));
+  border-bottom: 1px solid rgba(255,255,255,0.18);
+}
+
+.rs-popup-header h2 {
+  letter-spacing: 0.2px;
+}
+
+.rs-popup-content {
+  color: var(--rs-text);
+}
+
+.rs-popup-paper-list-container {
+  border-color: var(--rs-border);
+  background: rgba(255,255,255,0.55);
+}
+
+@media (prefers-color-scheme: dark) {
+  .rs-popup-paper-list-container {
+    background: rgba(17, 24, 39, 0.35);
+  }
+}
+
+.rs-popup-paper-item {
+  background: rgba(255,255,255,0.7);
+  border: 1px solid var(--rs-border);
+  transition: transform .15s ease, box-shadow .2s ease, border-color .2s ease;
+}
+
+.rs-popup-paper-item:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(2, 6, 23, 0.12);
+  border-color: rgba(59,130,246,0.25);
+}
+
+@media (prefers-color-scheme: dark) {
+  .rs-popup-paper-item { background: rgba(17,24,39,0.5); }
+}
+
+.rs-popup-paper-title { color: var(--rs-text); }
+.rs-popup-paper-authors, .rs-popup-paper-year { color: var(--rs-muted); }
+
+/* Buttons */
+.rs-start-organize-btn,
+.rs-browse-btn,
+.rs-auto-gen-btn,
+.rs-edit-prompt-btn {
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(2,6,23,0.08);
+}
+
+.rs-start-organize-btn {
+  background: linear-gradient(135deg, var(--rs-success), #10b981);
+}
+
+.rs-start-organize-btn:hover {
+  filter: brightness(1.03);
+}
+
+/* Toggle area cards */
+.rs-config-section, .rs-storage-section {
+  background: rgba(255,255,255,0.7);
+  border: 1px solid var(--rs-border);
+}
+
+@media (prefers-color-scheme: dark) {
+  .rs-config-section, .rs-storage-section { background: rgba(17,24,39,0.5); }
+}
+
+/* Inputs/selects */
+.rs-language-select, .rs-standard-select, .rs-working-dir-input, .rs-task-dir-input {
+  background: rgba(255,255,255,0.9);
+  border: 1px solid var(--rs-border);
+  color: var(--rs-text);
+}
+
+@media (prefers-color-scheme: dark) {
+  .rs-language-select, .rs-standard-select, .rs-working-dir-input, .rs-task-dir-input {
+    background: rgba(17,24,39,0.6);
+  }
+}
+
+/* Close button refinement */
+.rs-popup-close {
+  color: #fff !important;
+  backdrop-filter: blur(2px);
+}
+
+/* Action area (sticky) */
+.rs-action-buttons-fixed {
+  background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(255,255,255,0.7));
+}
+
+@media (prefers-color-scheme: dark) {
+  .rs-action-buttons-fixed {
+    background: linear-gradient(180deg, rgba(17,24,39,0.85), rgba(17,24,39,0.6));
+  }
+}
+
+/* Remove button visual without inline styles */
+.rs-popup-paper-remove {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.08);
+  transition: background-color .2s ease, transform .1s ease;
+}
+
+.rs-popup-paper-remove:hover { background: rgba(239, 68, 68, 0.18); }
+.rs-popup-paper-remove:active { transform: scale(0.96); }
+
+.rs-delete-icon { width: 18px; height: 18px; opacity: 0.75; }
+.rs-popup-paper-remove:hover .rs-delete-icon { opacity: 1; }
+
+/* Removing state */
+.rs-popup-paper-remove.removing { background: rgba(239, 68, 68, 0.28); }
+
+
+/* Subtle scrollbar */
+.rs-popup-content, .rs-popup-paper-list-container {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148,163,184,0.6) transparent;
+}
+
+.rs-popup-content::-webkit-scrollbar,
+.rs-popup-paper-list-container::-webkit-scrollbar { height: 8px; width: 8px; }
+.rs-popup-content::-webkit-scrollbar-thumb,
+.rs-popup-paper-list-container::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.6); border-radius: 8px; }
+.rs-popup-content::-webkit-scrollbar-track,
+.rs-popup-paper-list-container::-webkit-scrollbar-track { background: transparent; }
+
+/* --- Compact action bar (one-line modules) --- */
+.rs-action-bar {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* symmetric side padding for the action bar line */
+.rs-action-buttons .rs-action-bar {
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+
+.rs-action-module {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--rs-border);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.7);
+  box-sizing: border-box;
+}
+
+@media (prefers-color-scheme: dark) {
+  .rs-action-module { background: rgba(17,24,39,0.5); }
+}
+
+.rs-dir-module { flex: 1; }
+
+.rs-module-label {
+  font-size: 12px;
+  color: var(--rs-muted);
+}
+
+/* Compact input inside the action bar */
+.rs-compact-input {
+  flex: 1 1 auto;
+  min-width: 0; /* allow shrinking inside flex to avoid overlap */
+  padding: 6px 8px;
+  height: 28px;
+  font-size: 12px;
+  border: 1px solid var(--rs-border);
+  border-radius: 6px;
+  background: rgba(255,255,255,0.9);
+  color: var(--rs-text);
+  box-sizing: border-box;
+}
+
+@media (prefers-color-scheme: dark) {
+  .rs-compact-input { background: rgba(17,24,39,0.6); }
+}
+
+/* Icon button for small actions */
+.rs-icon-btn {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--rs-border);
+  border-radius: 6px;
+  background: rgba(255,255,255,0.7);
+  cursor: pointer;
+  transition: background-color .2s ease, transform .1s ease, box-shadow .2s ease;
+}
+
+.rs-icon-btn:hover { background: rgba(255,255,255,0.9); box-shadow: 0 1px 3px rgba(2,6,23,0.12); }
+.rs-icon-btn:active { transform: scale(0.97); }
+
+@media (prefers-color-scheme: dark) {
+  .rs-icon-btn { background: rgba(17,24,39,0.5); }
+  .rs-icon-btn:hover { background: rgba(17,24,39,0.65); }
+}
+
+/* Make toggles slightly smaller in the compact bar */
+.rs-action-bar .rs-toggle-switch { width: 42px; height: 22px; }
+.rs-action-bar .rs-toggle-slider:before { width: 16px; height: 16px; left: 3px; bottom: 3px; }
+.rs-action-bar input:checked + .rs-toggle-slider:before { transform: translateX(20px); }
+
+
+/* Module header/body for vertical arrangement within each compact module */
+.rs-module-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start; /* keep title and toggle close */
+  gap: 8px;
+}
+
+/* prevent header from stretching children apart */
+.rs-module-header > * { flex: 0 0 auto; }
+
+
+.rs-module-title {
+  font-size: 12px;
+  color: var(--rs-muted);
+  font-weight: 600;
+}
+
+.rs-module-body {
+  margin-top: 6px;
+}
+
+/* Path row inside storage module */
+.rs-path-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rs-path-prefix {
+  font-size: 12px;
+  color: var(--rs-muted);
+  white-space: nowrap;
+  user-select: text;
+}
+
+/* Make translation/classification modules equal width, dir module grows */
+.rs-module-translation, .rs-module-classification { width: 22%; min-width: 140px; }
+.rs-dir-module { flex: 1 1 0; min-width: 180px; }
+
+@media (max-width: 600px) {
+  .rs-action-bar { flex-direction: column; align-items: stretch; }
+  .rs-module-translation, .rs-module-classification, .rs-dir-module { width: 100%; min-width: unset; }
+}
+
+/* tighter internal paddings in header/body to save width */
+.rs-module-header { gap: 6px; }
+
+/* Force translation/classification selects to uniform width and smaller font */
+.rs-module-body .rs-language-select,
+.rs-module-body .rs-standard-select {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  font-size: 12px; /* 两号更小：原14 -> 12 */
+  line-height: 1.2;
+  padding: 4px 6px;
+}
+
+/* 显示4个字+省略号（收起状态） */
+.rs-module-body .rs-language-select,
+.rs-module-body .rs-standard-select {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 限制收起状态下可见字符宽度，约等于4个汉字宽度 */
+.rs-module-translation .rs-language-select,
+.rs-module-classification .rs-standard-select {
+  inline-size: 4em; /* 近似4个汉字宽度 */
+  max-inline-size: 100%;
+}
+
+/* 在窄布局或容器不足时，允许按100%撑满模块以避免挤压错位 */
+@media (max-width: 600px) {
+  .rs-module-translation .rs-language-select,
+  .rs-module-classification .rs-standard-select {
+    inline-size: 100%;
+    max-inline-size: 100%;
+  }
+}
+
+.rs-module-title { font-size: 12px; }
+.rs-toggle-switch { width: 42px; height: 22px; }
+.rs-toggle-slider:before { width: 16px; height: 16px; }
