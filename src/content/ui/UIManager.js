@@ -551,11 +551,10 @@ class UIManager {
 
       if (response && response.success) {
         logger.log('[UI_TRACE] handleStartOrganize: 整理论文任务已成功提交');
-        // TODO: 显示成功提示给用户
-        // TODO: 可以考虑隐藏弹窗或显示进度
-        if (this.popupWindow) {
-          this.popupWindow.hide();
-        }
+
+        // 🎯 新增：任务提交成功后的动画序列
+        await this._handleTaskSubmissionSuccess(selectedOptions);
+
       } else {
         logger.error('[UI_TRACE] handleStartOrganize: 整理论文任务提交失败:', response?.error || '未知错误');
         // TODO: 显示错误提示给用户
@@ -998,6 +997,200 @@ class UIManager {
       }
     } catch (error) {
       logger.error('[UI_TRACE] _saveOrganizeConfigAsDefaults: 保存配置时发生错误:', error);
+    }
+  }
+
+  /**
+   * 处理任务提交成功后的动画序列
+   * @param {Object} selectedOptions - 选择的配置选项
+   * @private
+   */
+  async _handleTaskSubmissionSuccess(selectedOptions) {
+    try {
+      logger.log('[UI_TRACE] _handleTaskSubmissionSuccess: 开始处理任务提交成功流程');
+
+      // 1. 先启动论文消失动画（不清空数据，保持DOM结构）
+      if (this.popupWindow) {
+        logger.log('[UI_TRACE] _handleTaskSubmissionSuccess: 开始论文消失动画');
+        await this.popupWindow.startPaperDisappearAnimation();
+        logger.log('[UI_TRACE] _handleTaskSubmissionSuccess: 论文消失动画完成');
+      }
+
+      // 2. 动画完成后再清空论文盒数据
+      const clearResult = await this._clearPaperBoxData();
+      if (clearResult.success) {
+        logger.log('[UI_TRACE] _handleTaskSubmissionSuccess: 论文盒清空成功');
+      } else {
+        logger.error('[UI_TRACE] _handleTaskSubmissionSuccess: 论文盒清空失败:', clearResult.error);
+      }
+
+      // 3. 立即开始弹窗关闭动画和显示通知（并行执行）
+      const hidePromise = this.popupWindow ? this.popupWindow.hideWithAnimation() : Promise.resolve();
+
+      // 4. 显示页面通知（稍微延迟一点，让弹窗开始关闭）
+      setTimeout(() => {
+        this._showPageNotification(selectedOptions);
+      }, 100); // 100ms延迟，让弹窗开始关闭动画
+
+      // 等待弹窗关闭完成
+      await hidePromise;
+
+    } catch (error) {
+      logger.error('[UI_TRACE] _handleTaskSubmissionSuccess: 处理任务提交成功流程时发生错误:', error);
+      // 降级处理：直接隐藏弹窗并显示通知
+      if (this.popupWindow) {
+        this.popupWindow.hide();
+      }
+      this._showPageNotification(selectedOptions);
+    }
+  }
+
+  /**
+   * 清空论文盒数据
+   * @private
+   */
+  async _clearPaperBoxData() {
+    try {
+      logger.log('[UI_TRACE] _clearPaperBoxData: 开始清空论文盒');
+      const clearResponse = await sendMessageToBackend(MessageActions.CLEAR_PAPER_BOX);
+
+      if (clearResponse && clearResponse.success) {
+        logger.log('[UI_TRACE] _clearPaperBoxData: 论文盒清空成功');
+        return { success: true };
+      } else {
+        logger.error('[UI_TRACE] _clearPaperBoxData: 论文盒清空失败:', clearResponse?.error);
+        return { success: false, error: clearResponse?.error };
+      }
+    } catch (error) {
+      logger.error('[UI_TRACE] _clearPaperBoxData: 清空论文盒时发生错误:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * 显示页面通知
+   * @param {Object} selectedOptions - 选择的配置选项
+   * @private
+   */
+  _showPageNotification(selectedOptions) {
+    try {
+      const taskName = selectedOptions.storage?.taskDirectory || '论文整理任务';
+      const title = 'LitHelper 任务已提交';
+      const message = `您的任务「${taskName}」已经提交，处理完毕后结果会存放在指定文件夹`;
+
+      logger.log('[UI_TRACE] _showPageNotification: 显示页面通知:', message);
+
+      // 确保样式已加载
+      this._ensureNotificationStyles();
+
+      // 创建页面通知元素
+      const notification = this._createPageNotificationElement(title, message);
+      document.body.appendChild(notification);
+
+      // 自动隐藏通知（5秒后）
+      setTimeout(() => {
+        this._hidePageNotification(notification);
+      }, 5000);
+
+    } catch (error) {
+      logger.error('[UI_TRACE] _showPageNotification: 显示页面通知时发生错误:', error);
+    }
+  }
+
+  /**
+   * 确保通知样式已加载
+   * @private
+   */
+  _ensureNotificationStyles() {
+    const cssPath = chrome.runtime.getURL('content/ui/styles/PopupWindow.css');
+    if (!document.querySelector(`link[href="${cssPath}"]`)) {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.type = 'text/css';
+      link.href = cssPath;
+      document.head.appendChild(link);
+    }
+  }
+
+  /**
+   * 创建页面通知元素
+   * @param {string} title - 通知标题
+   * @param {string} message - 通知消息
+   * @returns {HTMLElement} 通知元素
+   * @private
+   */
+  _createPageNotificationElement(title, message) {
+    const notification = document.createElement('div');
+    notification.className = 'rs-page-notification';
+
+    notification.innerHTML = `
+      <div class="rs-page-notification-title">${title}</div>
+      <div class="rs-page-notification-message">${message}</div>
+      <button class="rs-page-notification-close">×</button>
+    `;
+
+    // 添加关闭按钮事件
+    const closeButton = notification.querySelector('.rs-page-notification-close');
+    closeButton.addEventListener('click', () => {
+      this._hidePageNotification(notification);
+    });
+
+    return notification;
+  }
+
+  /**
+   * 隐藏页面通知
+   * @param {HTMLElement} notification - 通知元素
+   * @private
+   */
+  _hidePageNotification(notification) {
+    if (notification && notification.parentNode) {
+      notification.classList.add('rs-hiding');
+      setTimeout(() => {
+        if (notification.parentNode) {
+          notification.parentNode.removeChild(notification);
+        }
+      }, 500); // 等待动画完成
+    }
+  }
+
+  /**
+   * 显示任务提交成功的通知（浏览器通知，作为备用）
+   * @param {Object} selectedOptions - 选择的配置选项
+   * @private
+   */
+  _showTaskSubmittedNotification(selectedOptions) {
+    try {
+      const taskName = selectedOptions.storage?.taskDirectory || '论文整理任务';
+      const message = `您的任务「${taskName}」已经提交，处理完毕后结果会存放在指定文件夹`;
+
+      logger.log('[UI_TRACE] _showTaskSubmittedNotification: 显示任务提交通知:', message);
+
+      // 使用浏览器通知API显示通知
+      if (window.Notification && Notification.permission === 'granted') {
+        new Notification('LitHelper 任务已提交', {
+          body: message,
+          icon: chrome.runtime.getURL('icons/icon48.png')
+        });
+      } else if (window.Notification && Notification.permission !== 'denied') {
+        // 如果没有通知权限，尝试请求权限
+        Notification.requestPermission().then(permission => {
+          if (permission === 'granted') {
+            new Notification('LitHelper 任务已提交', {
+              body: message,
+              icon: chrome.runtime.getURL('icons/icon48.png')
+            });
+          } else {
+            // 如果没有通知权限，在控制台显示
+            console.log(`[LitHelper] ${message}`);
+          }
+        });
+      } else {
+        // 如果没有通知权限，在控制台显示
+        console.log(`[LitHelper] ${message}`);
+      }
+    } catch (error) {
+      logger.error('[UI_TRACE] _showTaskSubmittedNotification: 显示通知时发生错误:', error);
     }
   }
 }

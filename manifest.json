@@ -25,7 +25,8 @@
     "downloads",
     "contextMenus",
     "alarms",
-    "offscreen"
+    "offscreen",
+    "notifications"
   ],
   "host_permissions": [
     "*://*/*"

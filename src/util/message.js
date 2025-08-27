@@ -14,6 +14,7 @@ export const MessageActions = {
   PAPER_BOX_UPDATED: 'paperBoxUpdated',
   ADD_PAPER_TO_BOX: 'addPaperToBox',
   REMOVE_PAPER_FROM_BOX: 'removePaperFromBox',
+  CLEAR_PAPER_BOX: 'clearPaperBox',
 
   // Download related (下载相关)
   DOWNLOAD_PAPER: 'downloadPaper',

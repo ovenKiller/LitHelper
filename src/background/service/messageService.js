@@ -98,6 +98,7 @@ export class MessageService {
     handlers.set(MessageActions.GET_PAPER_BOX_DATA, this.handleGetPaperBoxData.bind(this));
     handlers.set(MessageActions.ADD_PAPER_TO_BOX, this.handleAddPaperToBox.bind(this));
     handlers.set(MessageActions.REMOVE_PAPER_FROM_BOX, this.handleRemovePaperFromBox.bind(this));
+    handlers.set(MessageActions.CLEAR_PAPER_BOX, this.handleClearPaperBox.bind(this));
 
     // Task Service Actions
     handlers.set(MessageActions.ADD_TASK_TO_QUEUE, this.handleAddTaskToQueue.bind(this));
@@ -193,7 +194,21 @@ export class MessageService {
     return true;
   }
 
-
+  /**
+   * 处理清空论文盒消息
+   */
+  async handleClearPaperBox(data, sender, sendResponse) {
+    try {
+      logger.log('[MessageService] 收到清空论文盒请求');
+      const result = await paperBoxManager.clearAllPapers();
+      logger.log('[MessageService] 论文盒清空结果:', result);
+      sendResponse(result);
+    } catch (error) {
+      logger.error('[MessageService] Failed to clear paper box:', error);
+      sendResponse({ success: false, error: error.message });
+    }
+    return true;
+  }
 
   /**
    * 处理添加任务到队列消息

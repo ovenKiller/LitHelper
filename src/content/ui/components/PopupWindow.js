@@ -625,6 +625,59 @@ class PopupWindow {
   }
 
   /**
+   * Hide the popup window with animation
+   */
+  hideWithAnimation() {
+    return new Promise((resolve) => {
+      if (this.element) {
+        this.element.classList.add('rs-hiding');
+        setTimeout(() => {
+          this.element.style.display = 'none';
+          this.element.classList.remove('rs-hiding');
+          this.isVisible = false;
+          resolve();
+        }, 300); // 等待动画完成（300ms）
+      } else {
+        resolve();
+      }
+    });
+  }
+
+  /**
+   * 启动论文项消失动画
+   * @returns {Promise} 动画完成的Promise
+   */
+  startPaperDisappearAnimation() {
+    return new Promise((resolve) => {
+      const paperItems = this.paperList?.querySelectorAll('.rs-popup-paper-item');
+      if (!paperItems || paperItems.length === 0) {
+        logger.log('[POPUP] 没有论文项需要动画');
+        resolve();
+        return;
+      }
+
+      logger.log('[POPUP] 开始论文项消失动画，共', paperItems.length, '项');
+
+      // 快速启动所有动画，只有很小的延迟来创造波浪效果
+      paperItems.forEach((item, index) => {
+        setTimeout(() => {
+          logger.log(`[POPUP] 开始第${index + 1}项动画`);
+          item.classList.add('rs-fadeout');
+        }, index * 50); // 减少延迟到50ms，创造更流畅的波浪效果
+      });
+
+      // 计算总动画时间：最后一个元素的延迟 + 动画持续时间
+      const totalAnimationTime = (paperItems.length - 1) * 50 + 400; // 50ms延迟 + 400ms动画时长
+
+      // 等待所有动画完成
+      setTimeout(() => {
+        logger.log('[POPUP] 所有论文项动画完成');
+        resolve();
+      }, totalAnimationTime);
+    });
+  }
+
+  /**
    * Remove the popup window
    */
   remove() {
@@ -1059,6 +1112,39 @@ class PopupWindow {
       this._generateTaskDirectoryName();
     }
   }
+
+  /**
+   * 调试方法：测试论文项动画
+   * 可以在浏览器控制台中调用 window.testPaperAnimation() 来测试
+   */
+  testPaperAnimation() {
+    logger.log('[POPUP] 开始测试论文项动画');
+    return this.startPaperDisappearAnimation();
+  }
+}
+
+// 将测试方法暴露到全局，方便调试
+if (typeof window !== 'undefined') {
+  window.testPaperAnimation = function() {
+    const popupElements = document.querySelectorAll('.rs-popup');
+    if (popupElements.length > 0) {
+      // 假设有PopupWindow实例，创建一个临时的测试方法
+      const paperItems = document.querySelectorAll('.rs-popup-paper-item');
+      if (paperItems.length > 0) {
+        console.log('找到', paperItems.length, '个论文项，开始测试动画');
+        paperItems.forEach((item, index) => {
+          setTimeout(() => {
+            console.log(`开始第${index + 1}项动画`);
+            item.classList.add('rs-fadeout');
+          }, index * 50); // 使用新的50ms延迟
+        });
+      } else {
+        console.log('没有找到论文项');
+      }
+    } else {
+      console.log('没有找到弹窗');
+    }
+  };
 }
 
 export default PopupWindow;
