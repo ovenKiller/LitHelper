@@ -53,6 +53,7 @@ export const MessageActions = {
   OPEN_SETTINGS: 'openSettings',
   OPEN_SETTINGS_SECTION: 'openSettingsSection',
   OPEN_WORKING_DIRECTORY: 'openWorkingDirectory',
+  OPEN_FILE_DIRECTORY: 'openFileDirectory',
   SHOW_DOWNLOAD_IN_FOLDER: 'showDownloadInFolder',
 
   // Notification actions (通知操作)
