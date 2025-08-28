@@ -14,6 +14,7 @@ export const MessageActions = {
   PAPER_BOX_UPDATED: 'paperBoxUpdated',
   ADD_PAPER_TO_BOX: 'addPaperToBox',
   REMOVE_PAPER_FROM_BOX: 'removePaperFromBox',
+  CLEAR_PAPER_BOX: 'clearPaperBox',
 
   // Download related (下载相关)
   DOWNLOAD_PAPER: 'downloadPaper',
@@ -52,6 +53,7 @@ export const MessageActions = {
   OPEN_SETTINGS: 'openSettings',
   OPEN_SETTINGS_SECTION: 'openSettingsSection',
   OPEN_WORKING_DIRECTORY: 'openWorkingDirectory',
+  OPEN_FILE_DIRECTORY: 'openFileDirectory',
   SHOW_DOWNLOAD_IN_FOLDER: 'showDownloadInFolder',
 
   // Notification actions (通知操作)

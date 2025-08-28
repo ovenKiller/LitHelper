@@ -100,6 +100,9 @@ class PaperOrganizationService {
     this._recomputeBatchProgress(batch);
 
     try {
+      // 🎯 通知前端：任务真正开始处理
+      this._notifyBatchProcessingStarted(batchId, batch);
+
       // 阶段1：阻塞式等待所有论文的元数据预处理完成
       const paperIds = batch.papers.map(pItem => pItem.paper.id);
       const readyPapers = await this._waitForAllPapersMetadataReady(paperIds);
@@ -335,12 +338,94 @@ class PaperOrganizationService {
     }
   }
 
+  /**
+   * 通知前端批次处理真正开始
+   * @param {string} batchId
+   * @param {Object} batch
+   * @private
+   */
+  _notifyBatchProcessingStarted(batchId, batch) {
+    try {
+      logger.log(`[PaperOrganizationService] 通知前端批次 ${batchId} 开始处理`);
+
+      // 发送消息给所有标签页
+      if (typeof chrome !== 'undefined' && chrome.tabs) {
+        chrome.tabs.query({}, (tabs) => {
+          tabs.forEach(tab => {
+            chrome.tabs.sendMessage(tab.id, {
+              action: 'BATCH_PROCESSING_STARTED',
+              data: {
+                batchId: batchId,
+                paperCount: batch.papers.length,
+                taskDirectory: batch.options?.storage?.taskDirectory || '论文整理任务'
+              }
+            }).catch(() => {
+              // 忽略无法发送消息的标签页（可能没有content script）
+            });
+          });
+        });
+      }
+    } catch (error) {
+      logger.error('[PaperOrganizationService] 发送批次开始通知失败:', error);
+    }
+  }
+
+  /**
+   * 通知前端批次处理完成
+   * @param {Object} batch - 批次对象
+   * @private
+   */
+  _notifyBatchCompleted(batch) {
+    try {
+      logger.log(`[PaperOrganizationService] 通知前端批次 ${batch.id} 处理完成`);
+
+      const completedPapers = batch.papers.filter(p => p.status === PAPER_STATUS.COMPLETED);
+      const failedPapers = batch.papers.filter(p => p.status === PAPER_STATUS.FAILED);
+
+      const notificationData = {
+        batchId: batch.id,
+        taskDirectory: batch.options?.storage?.taskDirectory || '论文整理任务',
+        totalPapers: batch.papers.length,
+        successCount: completedPapers.length,
+        failedCount: failedPapers.length,
+        csvFile: batch.csvFile || null,
+        completedAt: new Date().toISOString()
+      };
+
+      // 发送消息给所有标签页
+      if (typeof chrome !== 'undefined' && chrome.tabs) {
+        chrome.tabs.query({}, (tabs) => {
+          tabs.forEach(tab => {
+            chrome.tabs.sendMessage(tab.id, {
+              action: 'BATCH_PROCESSING_COMPLETED',
+              data: notificationData
+            }).catch(() => {
+              // 忽略无法发送消息的标签页（可能没有content script）
+            });
+          });
+        });
+      }
+
+      logger.log(`[PaperOrganizationService] 批次完成通知已发送:`, notificationData);
+    } catch (error) {
+      logger.error('[PaperOrganizationService] 发送批次完成通知失败:', error);
+    }
+  }
+
   async _finalizeBatchIfPossible(batch) {
     this._recomputeBatchProgress(batch);
 
-    // 如果批次已完成，生成CSV文件
-    if (batch.status === BATCH_STATUS.COMPLETED && batch.options.storage?.taskDirectory) {
-      await this._generateBatchCsv(batch);
+    // 如果批次已完成，生成CSV文件并通知前端
+    if (batch.status === BATCH_STATUS.COMPLETED) {
+      logger.log(`[PaperOrganizationService] 批次 ${batch.id} 已完成，开始后续处理`);
+
+      // 生成CSV文件（如果有存储目录）
+      if (batch.options.storage?.taskDirectory) {
+        await this._generateBatchCsv(batch);
+      }
+
+      // 🎯 通知前端任务完成
+      this._notifyBatchCompleted(batch);
     }
   }
 

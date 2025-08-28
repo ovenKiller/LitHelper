@@ -87,7 +87,7 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
           if (window.Notification && Notification.permission === 'granted') {
             new Notification('LitHelper 任务完成', {
               body: message,
-              icon: chrome.runtime.getURL('src/assets/icons/icon48.png')
+              icon: chrome.runtime.getURL('icons/icon48.png')
             });
           } else {
             // 如果没有通知权限，在控制台显示

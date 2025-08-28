@@ -98,6 +98,7 @@ export class MessageService {
     handlers.set(MessageActions.GET_PAPER_BOX_DATA, this.handleGetPaperBoxData.bind(this));
     handlers.set(MessageActions.ADD_PAPER_TO_BOX, this.handleAddPaperToBox.bind(this));
     handlers.set(MessageActions.REMOVE_PAPER_FROM_BOX, this.handleRemovePaperFromBox.bind(this));
+    handlers.set(MessageActions.CLEAR_PAPER_BOX, this.handleClearPaperBox.bind(this));
 
     // Task Service Actions
     handlers.set(MessageActions.ADD_TASK_TO_QUEUE, this.handleAddTaskToQueue.bind(this));
@@ -119,6 +120,7 @@ export class MessageService {
     // System Actions
     handlers.set(MessageActions.OPEN_SETTINGS_SECTION, this.handleOpenSettingsSection.bind(this));
     handlers.set(MessageActions.OPEN_WORKING_DIRECTORY, this.handleOpenWorkingDirectory.bind(this));
+    handlers.set(MessageActions.OPEN_FILE_DIRECTORY, this.handleOpenFileDirectory.bind(this));
     handlers.set(MessageActions.SHOW_DOWNLOAD_IN_FOLDER, this.handleShowDownloadInFolder.bind(this));
 
     // Setup the single listener with the handler map
@@ -193,7 +195,21 @@ export class MessageService {
     return true;
   }
 
-
+  /**
+   * 处理清空论文盒消息
+   */
+  async handleClearPaperBox(data, sender, sendResponse) {
+    try {
+      logger.log('[MessageService] 收到清空论文盒请求');
+      const result = await paperBoxManager.clearAllPapers();
+      logger.log('[MessageService] 论文盒清空结果:', result);
+      sendResponse(result);
+    } catch (error) {
+      logger.error('[MessageService] Failed to clear paper box:', error);
+      sendResponse({ success: false, error: error.message });
+    }
+    return true;
+  }
 
   /**
    * 处理添加任务到队列消息
@@ -547,6 +563,60 @@ export class MessageService {
         success: false,
         error: error.message,
         message: '无法打开工作目录，请手动在下载文件夹中查找相关文件'
+      });
+    }
+    return true;
+  }
+
+  /**
+   * 处理打开指定文件所在目录消息
+   */
+  async handleOpenFileDirectory(data, sender, sendResponse) {
+    try {
+      const { filePath } = data || {};
+      logger.log('[MessageService] 请求打开文件所在目录:', filePath);
+
+      if (!filePath) {
+        throw new Error('缺少文件路径');
+      }
+
+      // 导入文件管理服务
+      const { fileManagementService } = await import('../../service/fileManagementService.js');
+
+      // 从文件路径中提取目录路径
+      const directoryPath = filePath.substring(0, filePath.lastIndexOf('/'));
+
+      let result;
+      if (directoryPath.includes('/')) {
+        // 如果是子目录，尝试显示具体目录
+        const taskDirectory = directoryPath.split('/').pop();
+        result = await fileManagementService.showTaskDirectory(taskDirectory);
+      } else {
+        // 如果是根目录，显示工作目录
+        result = await fileManagementService.showWorkingDirectory();
+      }
+
+      if (result.success) {
+        sendResponse({
+          success: true,
+          message: result.message,
+          filename: result.filename,
+          downloadId: result.downloadId
+        });
+      } else {
+        // 如果失败，提供降级方案
+        sendResponse({
+          success: false,
+          error: result.error,
+          message: `无法定位到目录，建议手动在下载文件夹中查找相关文件`
+        });
+      }
+    } catch (error) {
+      logger.error('[MessageService] 打开文件目录失败:', error);
+      sendResponse({
+        success: false,
+        error: error.message,
+        message: '无法打开文件目录，请手动在下载文件夹中查找相关文件'
       });
     }
     return true;
