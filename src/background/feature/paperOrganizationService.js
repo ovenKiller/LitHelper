@@ -371,6 +371,48 @@ class PaperOrganizationService {
   }
 
   /**
+   * 检查是否有正在进行的任务
+   * @returns {Object} 任务状态信息
+   */
+  getActiveTasksStatus() {
+    const activeBatches = [];
+    let totalActiveTasks = 0;
+    let totalProcessingPapers = 0;
+
+    for (const [batchId, batch] of this.batches) {
+      if (batch.status === BATCH_STATUS.RUNNING) {
+        const processingPapers = batch.papers.filter(p =>
+          p.status === PAPER_STATUS.WAITING_METADATA ||
+          p.status === PAPER_STATUS.ORGANIZING
+        );
+
+        if (processingPapers.length > 0) {
+          activeBatches.push({
+            batchId,
+            status: batch.status,
+            totalPapers: batch.papers.length,
+            processingPapers: processingPapers.length,
+            completedPapers: batch.papers.filter(p => p.status === PAPER_STATUS.COMPLETED).length,
+            failedPapers: batch.papers.filter(p => p.status === PAPER_STATUS.FAILED).length,
+            taskDirectory: batch.options?.storage?.taskDirectory || '论文整理任务'
+          });
+
+          totalActiveTasks++;
+          totalProcessingPapers += processingPapers.length;
+        }
+      }
+    }
+
+    return {
+      hasActiveTasks: totalActiveTasks > 0,
+      totalActiveBatches: totalActiveTasks,
+      totalProcessingPapers,
+      activeBatches,
+      timestamp: Date.now()
+    };
+  }
+
+  /**
    * 通知前端批次处理完成
    * @param {Object} batch - 批次对象
    * @private

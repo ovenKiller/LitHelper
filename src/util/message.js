@@ -58,6 +58,13 @@ export const MessageActions = {
 
   // Notification actions (通知操作)
   SHOW_NOTIFICATION: 'showNotification',
+
+  // System health check (系统健康检查)
+  HEALTH_CHECK: 'healthCheck',
+  PING: 'ping',
+
+  // Task status management (任务状态管理)
+  GET_ACTIVE_TASKS_STATUS: 'getActiveTasksStatus',
 };
 
 /**
@@ -86,6 +93,113 @@ export async function sendMessageToBackend(action, data) {
       }
     });
   });
+}
+
+/**
+ * 判断错误是否应该重试
+ * @param {Error} error - 错误对象
+ * @returns {boolean}
+ */
+function shouldRetry(error) {
+  const message = error.message?.toLowerCase() || '';
+
+  // 这些错误应该重试（Service Worker激活相关）
+  const retryableErrors = [
+    'message timeout',
+    'empty response',
+    'could not establish connection',
+    'receiving end does not exist',
+    'extension context invalidated'
+  ];
+
+  // 这些错误不应该重试（业务逻辑错误）
+  const nonRetryableErrors = [
+    'invalid parameters',
+    'permission denied',
+    'not supported'
+  ];
+
+  if (nonRetryableErrors.some(err => message.includes(err))) {
+    return false;
+  }
+
+  if (retryableErrors.some(err => message.includes(err))) {
+    return true;
+  }
+
+  // 默认重试未知错误
+  return true;
+}
+
+/**
+ * 带重试机制的后台消息发送
+ * @param {MessageActions} action - 消息动作
+ * @param {any} [data] - 附带的数据
+ * @param {Object} [options] - 重试选项
+ * @param {number} [options.maxRetries=3] - 最大重试次数
+ * @param {number} [options.retryDelay=500] - 重试延迟(ms)
+ * @param {number} [options.timeout=5000] - 单次消息超时(ms)
+ * @param {boolean} [options.validateResponse=true] - 是否验证响应内容
+ * @returns {Promise<any>}
+ */
+export async function sendMessageToBackendWithRetry(action, data, options = {}) {
+  const {
+    maxRetries = 3,
+    retryDelay = 500,
+    timeout = 5000,
+    validateResponse = true
+  } = options;
+
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[MessageRetry] 尝试发送消息 ${attempt}/${maxRetries}: ${action}`);
+
+      // 带超时的消息发送
+      const response = await Promise.race([
+        sendMessageToBackend(action, data),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Message timeout')), timeout)
+        )
+      ]);
+
+      // 验证响应有效性
+      if (validateResponse) {
+        if (response === undefined || response === null) {
+          throw new Error('Empty response from background script');
+        }
+
+        // 对于需要success字段的消息，验证success状态
+        if (typeof response === 'object' && 'success' in response && !response.success) {
+          throw new Error(`Background operation failed: ${response.error || 'Unknown error'}`);
+        }
+      }
+
+      console.log(`[MessageRetry] 消息发送成功: ${action}`);
+      return response;
+
+    } catch (error) {
+      lastError = error;
+      console.warn(`[MessageRetry] 尝试 ${attempt} 失败: ${error.message}`);
+
+      // 最后一次尝试失败，不再重试
+      if (attempt === maxRetries) {
+        break;
+      }
+
+      // 根据错误类型决定是否重试
+      if (!shouldRetry(error)) {
+        console.log(`[MessageRetry] 错误不可重试，停止尝试: ${error.message}`);
+        break;
+      }
+
+      // 等待后重试
+      await new Promise(resolve => setTimeout(resolve, retryDelay * attempt));
+    }
+  }
+
+  throw new Error(`Message sending failed after ${maxRetries} attempts: ${lastError?.message}`);
 }
 
 /**

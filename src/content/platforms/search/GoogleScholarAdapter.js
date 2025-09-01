@@ -330,21 +330,11 @@ class GoogleScholarAdapter extends SearchPlatformAdapter {
         // 创建论文控制组件
         const controls = new PaperControls(paper.id, paper.element);
         controls.initialize({
-          hasPdf: !!paper.pdfUrl,
-          onSummarize: (paperId) => this.uiManager.handleSummarizeClick(paperId, this),
-          onDownload: (paperId) => this.uiManager.handleDownloadClick(paperId, this),
           onAddToPaperBox: (paperId) => this.handleAddToPaperBox(paperId, paper)
         });
         
         // 注册控件组件到UI管理器
         this.uiManager.registerControlsComponent(paper.id, controls);
-        
-        // 创建摘要容器
-        const summaryContainer = new SummaryContainer(paper.id, paper.element);
-        summaryContainer.initialize();
-        
-        // 注册组件到UI管理器
-        this.uiManager.registerComponent(paper.id, summaryContainer);
       }
       
       logger.log(`[GoogleScholarAdapter] UI注入完成，成功为 ${papers.length} 篇论文注入组件`);

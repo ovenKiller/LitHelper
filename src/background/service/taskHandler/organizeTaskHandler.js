@@ -16,10 +16,10 @@ import aiServiceInstance from '../../../service/aiService.js';
 export class OrganizeTaskHandler extends BaseHandler {
   constructor() {
     const config = {
-      maxConcurrency: 1,
+      maxConcurrency: 10,
       queueConfig: {
-        executionQueueSize: 3,
-        waitingQueueSize: 10
+        executionQueueSize: 20,
+        waitingQueueSize: 50
       },
       persistenceConfig: {
         strategy: PERSISTENCE_STRATEGY.NONE

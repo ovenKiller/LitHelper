@@ -27,6 +27,7 @@ export class MessageService {
     this.taskService = null;
     this.aiCrawlerTaskHandler = null;
     this.aiExtractorTaskHandler = null;
+    this.paperOrganizationService = paperOrganizationService;
   }
 
   /**
@@ -103,6 +104,7 @@ export class MessageService {
     // Task Service Actions
     handlers.set(MessageActions.ADD_TASK_TO_QUEUE, this.handleAddTaskToQueue.bind(this));
     handlers.set(MessageActions.CLEAR_ALL_TASK_DATA, this.handleClearAllTaskData.bind(this));
+    handlers.set(MessageActions.GET_ACTIVE_TASKS_STATUS, this.handleGetActiveTasksStatus.bind(this));
 
     // Storage Service Actions
     handlers.set(MessageActions.CLEAR_ALL_CSS_SELECTORS, this.handleClearAllCssSelectors.bind(this));
@@ -121,6 +123,8 @@ export class MessageService {
     handlers.set(MessageActions.OPEN_SETTINGS_SECTION, this.handleOpenSettingsSection.bind(this));
     handlers.set(MessageActions.OPEN_WORKING_DIRECTORY, this.handleOpenWorkingDirectory.bind(this));
     handlers.set(MessageActions.OPEN_FILE_DIRECTORY, this.handleOpenFileDirectory.bind(this));
+    handlers.set(MessageActions.HEALTH_CHECK, this.handleHealthCheck.bind(this));
+    handlers.set(MessageActions.PING, this.handlePing.bind(this));
     handlers.set(MessageActions.SHOW_DOWNLOAD_IN_FOLDER, this.handleShowDownloadInFolder.bind(this));
 
     // Setup the single listener with the handler map
@@ -643,6 +647,89 @@ export class MessageService {
       sendResponse(result);
     } catch (error) {
       logger.error('[MessageService] 显示下载文件失败:', error);
+      sendResponse({
+        success: false,
+        error: error.message
+      });
+    }
+    return true;
+  }
+
+  /**
+   * 处理健康检查消息
+   */
+  async handleHealthCheck(data, sender, sendResponse) {
+    try {
+      const isReady = this.isInitialized &&
+                      this.taskService &&
+                      this.taskService.isStarted;
+
+      logger.log('[MessageService] 健康检查请求，服务状态:', {
+        isInitialized: this.isInitialized,
+        hasTaskService: !!this.taskService,
+        taskServiceStarted: this.taskService?.isStarted || false
+      });
+
+      sendResponse({
+        success: isReady,
+        timestamp: Date.now(),
+        services: {
+          messageService: this.isInitialized,
+          taskService: !!this.taskService,
+          taskServiceStarted: this.taskService?.isStarted || false
+        }
+      });
+    } catch (error) {
+      logger.error('[MessageService] 健康检查失败:', error);
+      sendResponse({
+        success: false,
+        error: error.message,
+        timestamp: Date.now()
+      });
+    }
+    return true;
+  }
+
+  /**
+   * 处理PING消息（用于激活Service Worker）
+   */
+  async handlePing(data, sender, sendResponse) {
+    logger.log('[MessageService] 收到PING消息，Service Worker已激活');
+    sendResponse({
+      success: true,
+      timestamp: Date.now(),
+      message: 'Service Worker active'
+    });
+    return true;
+  }
+
+  /**
+   * 处理获取活跃任务状态消息
+   */
+  async handleGetActiveTasksStatus(data, sender, sendResponse) {
+    try {
+      // 确保服务已初始化
+      if (!this.isInitialized) {
+        await this.initialize();
+      }
+
+      // 调试信息
+      logger.log(`[MessageService] 检查 paperOrganizationService:`, {
+        exists: !!this.paperOrganizationService,
+        hasMethod: !!this.paperOrganizationService?.getActiveTasksStatus
+      });
+
+      // 从 paperOrganizationService 获取状态
+      const statusInfo = this.paperOrganizationService.getActiveTasksStatus();
+
+      logger.log(`[MessageService] 返回任务状态:`, statusInfo);
+
+      sendResponse({
+        success: true,
+        data: statusInfo
+      });
+    } catch (error) {
+      logger.error('[MessageService] 获取任务状态失败:', error);
       sendResponse({
         success: false,
         error: error.message

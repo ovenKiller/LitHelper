@@ -21,12 +21,12 @@ export class AiCrawlerTaskHandler extends BaseHandler {
   constructor() {
     const config = {
       // 并发配置
-      maxConcurrency: 3,
+      maxConcurrency: 10,
       
       // 队列配置
       queueConfig: {
-        executionQueueSize: 5,
-        waitingQueueSize: 10
+        executionQueueSize: 20,
+        waitingQueueSize: 50
       },
       
       // 持久化配置 - 不需要持久化

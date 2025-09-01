@@ -4,33 +4,10 @@
  * Platform-specific styles for supported academic platforms
  */
 
-/* 控件容器样式 */
-.rs-controls {
-  display: flex;
-  margin-top: 10px;
-  margin-bottom: 10px;
+/* 为论文项容器添加相对定位，使绝对定位的控件能正确显示 */
+.gs_r, .gs_ri, .gs_or, .gs_scl,
+.List-results-items,
+.issue-item,
+.arxiv-result {
+  position: relative;
 }
-
-/* 针对Google Scholar的特定样式 */
-.gs_r.gs_or.gs_scl .rs-controls {
-  margin-top: 12px;
-}
-
-.gs_ri .rs-controls {
-  margin-top: 6px;
-}
-
-/* 针对IEEE的特定样式 */
-.List-results-items .rs-controls {
-  margin-top: 10px;
-}
-
-/* 针对ACM的特定样式 */
-.issue-item .rs-controls {
-  margin-top: 8px;
-}
-
-/* 针对ArXiv的特定样式 */
-.arxiv-result .rs-controls {
-  margin-top: 6px;
-} 

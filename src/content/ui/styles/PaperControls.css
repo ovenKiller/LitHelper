@@ -5,70 +5,31 @@
  */
 
 .rs-controls {
-  display: flex;
-  gap: 10px;
-  margin-top: 10px;
-}
-
-.rs-controls button {
-  padding: 6px 12px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 12px;
-  transition: background-color 0.3s ease;
-}
-
-.rs-summarize-btn {
-  background-color: #4285f4;
-  color: white;
-}
-
-.rs-summarize-btn:hover {
-  background-color: #3367d6;
-}
-
-.rs-download-btn {
-  background-color: #34a853;
-  color: white;
-}
-
-.rs-download-btn:hover:not(:disabled) {
-  background-color: #2d8a46;
-}
-
-.rs-download-btn:disabled {
-  background-color: #ccc;
-  cursor: not-allowed;
-}
-
-/* Loading and success states */
-.rs-loading {
-  position: relative;
-  color: transparent !important;
-}
-
-.rs-loading::after {
-  content: '';
   position: absolute;
   top: 50%;
-  left: 50%;
-  width: 16px;
-  height: 16px;
-  margin-top: -8px;
-  margin-left: -8px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: white;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
+  right: 10px;
+  transform: translateY(-50%);
+  z-index: 10;
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+.rs-add-btn {
+  width: 48px;
+  height: 48px;
+  border: none;
+  background-color: transparent;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  cursor: pointer;
+  opacity: 0.8;
+  transition: all 0.4s ease;
 }
 
-.rs-success {
-  background-color: #34a853 !important;
-} 
+.rs-add-btn:hover {
+  opacity: 1;
+}
+
+.rs-add-btn.rs-transitioning {
+  opacity: 0;
+}
+

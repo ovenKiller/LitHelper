@@ -186,7 +186,7 @@ class PopupWindow {
 
     // Create title
     const titleElement = document.createElement('h2');
-    titleElement.textContent = title || 'Research Summarizer';
+    titleElement.textContent = title || '';
     header.appendChild(titleElement);
 
     // Create close button

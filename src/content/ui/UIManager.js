@@ -10,7 +10,7 @@ import PaperControls from './components/PaperControls';
 import { storage } from '../../util/storage.js';
 import { Paper } from '../../model/Paper.js'; // Import Paper class
 import { logger } from '../../util/logger.js';
-import { MessageActions, sendMessageToBackend, addContentScriptMessageListener } from '../../util/message.js';
+import { MessageActions, sendMessageToBackend, sendMessageToBackendWithRetry, addContentScriptMessageListener } from '../../util/message.js';
 import { PLATFORM_KEYS, PAGE_TYPE } from '../../constants.js';
 import { configService } from '../../service/configService.js';
 
@@ -276,7 +276,7 @@ class UIManager {
       logger.log('[UI_TRACE] initializePopupWindow: 开始初始化弹出窗口');
       this.popupWindow = new PopupWindow();
       await this.popupWindow.initialize({
-        title: 'Research Summarizer',
+        title: '',
         query: this.getCurrentQuery(),
         onClose: () => this.hidePopup(),
         onStartOrganize: (selectedOptions) => this.handleStartOrganize(selectedOptions),
@@ -546,24 +546,32 @@ class UIManager {
       }));
 
       // 发送论文提取任务，使用与GoogleScholarAdapter相同的参数格式
-      const metadataResponse = await sendMessageToBackend(MessageActions.PROCESS_PAPERS, {
+      const metadataResponse = await sendMessageToBackendWithRetry(MessageActions.PROCESS_PAPERS, {
         sourceDomain: PLATFORM_KEYS.GOOGLE_SCHOLAR,
         pageType: PAGE_TYPE.SEARCH_RESULTS,
         papers: serializedPapers
+      }, {
+        maxRetries: 3,
+        retryDelay: 1000,
+        timeout: 15000
       });
 
       if (!metadataResponse || !metadataResponse.success) {
         logger.error('[UI_TRACE] handleStartOrganize: 论文提取任务提交失败:', metadataResponse?.error || '未知错误');
-        // TODO: 显示错误提示给用户
+        this._showPageNotification(`论文提取任务提交失败: ${metadataResponse?.error || '未知错误'}`, 'error');
         return;
       }
 
       logger.log('[UI_TRACE] handleStartOrganize: 论文提取任务已成功提交，现在发送整理论文请求');
 
       // 🚀 第二步：发送整理论文请求到后台
-      const response = await sendMessageToBackend(MessageActions.ORGANIZE_PAPERS, {
+      const response = await sendMessageToBackendWithRetry(MessageActions.ORGANIZE_PAPERS, {
         papers: allPapers,
         options: frontendConfig
+      }, {
+        maxRetries: 3,
+        retryDelay: 1000,
+        timeout: 15000
       });
 
       if (response && response.success) {
@@ -589,12 +597,23 @@ class UIManager {
 
       } else {
         logger.error('[UI_TRACE] handleStartOrganize: 整理论文任务提交失败:', response?.error || '未知错误');
-        // TODO: 显示错误提示给用户
+        this._showPageNotification(`整理论文任务提交失败: ${response?.error || '未知错误'}`, 'error');
       }
 
     } catch (error) {
       logger.error('[UI_TRACE] handleStartOrganize: 整理论文时发生错误:', error);
-      // TODO: 显示错误提示给用户
+
+      // 根据错误类型显示不同的提示
+      let errorMessage = '整理论文时发生错误';
+      if (error.message.includes('Message sending failed')) {
+        errorMessage = '后台服务连接失败，请检查扩展状态或刷新页面重试';
+      } else if (error.message.includes('timeout')) {
+        errorMessage = '请求超时，请稍后重试';
+      } else {
+        errorMessage = `整理论文失败: ${error.message}`;
+      }
+
+      this._showPageNotification(errorMessage, 'error');
     }
   }
 
@@ -698,38 +717,13 @@ class UIManager {
   }
 
   /**
-   * Handle download click
+   * Handle download click (deprecated - download functionality removed)
    * @param {string} paperId - Paper ID
    * @param {Object} platform - Platform adapter instance (optional)
    */
   async handleDownloadClick(paperId, platform) {
-    logger.log(`[UI_TRACE] handleDownloadClick: 论文ID: ${paperId}`);
-
-    const paper = this.papers.get(paperId);
-    if (!paper) {
-      logger.error(`[UI_TRACE] handleDownloadClick: 找不到论文: ${paperId}`);
-      return;
-    }
-
-    try {
-      this.showDownloadLoadingIndicator(paperId);
-      logger.log("[UI_TRACE] handleDownloadClick: 发送请求到 background.js", paper);
-
-      const response = await sendMessageToBackend(MessageActions.DOWNLOAD_PAPER, { paper });
-
-      if (response && response.success) {
-        logger.log(`[UI_TRACE] handleDownloadClick: 论文 ${paperId} 下载成功.`);
-        this.showDownloadSuccess(paperId);
-      } else {
-        logger.error(`[UI_TRACE] handleDownloadClick: 论文下载失败 ${paperId}:`, response.error);
-        this.showDownloadError(paperId, response.error);
-      }
-    } catch (error) {
-      logger.error(`[UI_TRACE] handleDownloadClick: 论文下载时发生错误 ${paperId}:`, error);
-      this.showDownloadError(paperId, error.message);
-    } finally {
-      this.hideDownloadLoadingIndicator(paperId);
-    }
+    logger.log(`[UI_TRACE] handleDownloadClick: 下载功能已移除，论文ID: ${paperId}`);
+    // 下载功能已从PaperControls中移除，此方法保留以避免破坏现有调用
   }
 
   /**

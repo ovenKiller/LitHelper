@@ -11,27 +11,32 @@
   width: 60px;
   height: 60px;
   border-radius: 50%;
-  background-color: #4285f4;
-  color: white;
-  border: none;
-  font-size: 18px;
-  font-weight: bold;
+  background-color: #F8FAFB;
+  background-size: 36px 36px;
+  background-repeat: no-repeat;
+  background-position: center;
+  color: #1D3D56;
+  border: 2px solid #E2E8F0;
+  font-size: 0; /* Hide text content when using logo */
   cursor: pointer;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 12px rgba(29, 61, 86, 0.15);
   z-index: 10000;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.3s, transform 0.2s;
+  transition: all 0.3s ease;
 }
 
 .rs-floating-button:hover {
-  background-color: #1a73e8;
+  background-color: #FFFFFF;
+  border-color: #1D3D56;
   transform: scale(1.05);
+  box-shadow: 0 6px 16px rgba(29, 61, 86, 0.25);
 }
 
 .rs-floating-button:active {
   transform: scale(0.95);
+  background-color: #F0F4F8;
 }
 
 .rs-tooltip {
@@ -69,4 +74,28 @@
   justify-content: center;
   padding: 0 4px;
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+/* 处理中状态的动画 */
+.rs-floating-button.processing::before {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  right: -4px;
+  bottom: -4px;
+  border-radius: 50%;
+  border: 2px solid #E5E7EB;
+  animation: rs-spin 1.5s linear infinite;
+  z-index: -1;
+}
+
+/* 旋转动画 */
+@keyframes rs-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }

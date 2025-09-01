@@ -52,8 +52,10 @@
     {
       "resources": [
         "css/*",
-        "images/*", 
+        "images/*",
         "icons/*",
+        "assets/*",
+        "assets/icons/*",
         "content/ui/styles/*",
         "content/ui/icons/*"
       ],

@@ -17,10 +17,10 @@ export class AiExtractorTaskHandler extends BaseHandler {
    */
   constructor() {
     const config = {
-      maxConcurrency: 5,
+      maxConcurrency: 10,
       queueConfig: {
-        executionQueueSize: 10,
-        waitingQueueSize: 20
+        executionQueueSize: 20,
+        waitingQueueSize: 50
       },
       persistenceConfig: {
         strategy: PERSISTENCE_STRATEGY.NONE
